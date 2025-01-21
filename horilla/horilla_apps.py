@@ -52,6 +52,7 @@ SIDEBARS = [
     "offboarding",
     "asset",
     "helpdesk",
+    "project"
 ]
 
 WHITE_LABELLING = False

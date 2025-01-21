@@ -27,8 +27,8 @@
                 {% if perms.payroll.add_allowance and active_contracts %}
                     <button title="Add Bonus"
                         class="oh-btn oh-btn--secondary-outline oh-stop-prop oh-accordion-meta__btn p-2" title="Add"
-                        hx-get="{% url 'add-bonus' %}?employee_id={{employee.id}}" hx-target="#addBonusModalBody"
-                        data-target="#addBonusModal" data-toggle="oh-modal-toggle">
+                        hx-get="{% url 'add-bonus' %}?employee_id={{employee.id}}" hx-target="#objectCreateModalTarget"
+                        data-target="#objectCreateModal" data-toggle="oh-modal-toggle">
                         <ion-icon class="md hydrated" name="add-outline" role="img" aria-label="add outline"></ion-icon>
                     </button>
                 {% endif %}
@@ -56,10 +56,11 @@
                                             </div>
                                         </div>
                                     </div>
-
+                                    <div class="oh-sticky-table__th">{% trans "Date" %}</div>
                                     <div class="oh-sticky-table__th">{% trans "Is Taxable" %}</div>
                                     <div class="oh-sticky-table__th">{% trans "Is Condition Based" %}</div>
                                     <div class="oh-sticky-table__th">{% trans "Is Fixed" %}</div>
+                                    <div class="oh-sticky-table__th">{% trans "Rate" %}</div>
                                     <div class="oh-sticky-table__th">{% trans "Amount" %}</div>
                                     <div class="oh-sticky-table__th">{% trans "Based On" %}</div>
                                     {% if perms.payroll.change_allowance or perms.payroll.delete_allowance %}
@@ -75,21 +76,27 @@
                                     <div class="oh-sticky-table__tr ui-sortable-handle">
                                         <div class="oh-sticky-table__td">{{allowance.title}}</div>
                                         <div class="oh-sticky-table__td">
-                                            {{allowance.is_taxable|yesno|capfirst}}
+                                            {% if allowance.one_time_date %}{% trans "On" %} <span class="dateformat_changer">{{allowance.one_time_date}}</span>
+                                            {% else %}{% trans "All time allowance." %}{% endif %}</div>
+                                        <div class="oh-sticky-table__td">
+                                            {{allowance.is_taxable|yes_no}}
                                         </div>
                                         <div class="oh-sticky-table__td">
-                                            {{allowance.is_condition_based|yesno|capfirst}}
+                                            {{allowance.is_condition_based|yes_no}}
                                         </div>
                                         <div class="oh-sticky-table__td">
-                                            {{allowance.is_fixed|yesno|capfirst}}
+                                            {{allowance.is_fixed|yes_no}}
                                         </div>
                                         <div class="oh-sticky-table__td">
-                                            {% if allowance.amount %}{{allowance.amount}}{% endif %}
+                                            {% if allowance.rate %}{{allowance.rate}}{% else %}-{% endif %}
+                                        </div>
+                                        <div class="oh-sticky-table__td">
+                                            {% if allowance.amount %}{{allowance.amount}}{% else %}-{% endif %}
                                         </div>
                                         <div class="oh-sticky-table__td">
                                             {% if allowance.get_based_on_display%}
                                                 {{allowance.get_based_on_display}}
-                                            {% endif %}
+                                            {% else %}-{% endif %}
                                         </div>
                                         {% if perms.payroll.change_allowance or perms.payroll.delete_allowance %}
                                             <div class="oh-sticky-table__td oh-sticky-table__right">
@@ -170,10 +177,10 @@
                                     <div class="oh-sticky-table__tr ui-sortable-handle">
                                         <div class="oh-sticky-table__sd">{{deduction.title}}</div>
                                         <div class="oh-sticky-table__td">
-                                            {{deduction.is_pretax|yesno|capfirst}}
+                                            {{deduction.is_pretax|yes_no}}
                                         </div>
                                         <div class="oh-sticky-table__td">
-                                            {{deduction.is_condition_based|yesno|capfirst}}
+                                            {{deduction.is_condition_based|yes_no}}
                                         </div>
                                         <div class="oh-sticky-table__td">
                                             {% if deduction.field %} {{deduction.get_field_display}}
@@ -181,7 +188,7 @@
                                             {% endif %}
                                         </div>
                                         <div class="oh-sticky-table__td">
-                                            {{deduction.is_fixed|yesno|capfirst}}
+                                            {{deduction.is_fixed|yes_no}}
                                         </div>
                                         <div class="oh-sticky-table__td">
                                             {% if deduction.amount %}
@@ -232,11 +239,6 @@
             </div>
         </div>
     </div>
-</div>
-
-
-<div class="oh-modal" id="addBonusModal" role="dialog" aria-hidden="true">
-    <div class="oh-modal__dialog" id="addBonusModalBody"> </div>
 </div>
 
 <script>

@@ -18,7 +18,7 @@
   {% if bulk_select_option %}
   {% include "generic/quick_actions.html" %}
   {% endif %}
-  <button class="reload-record" hidden hx-get="{{request.path}}?{{request.GET.urlencode}}" hx-target="#{{view_id|safe}}" hx-swap="outerHTML">
+  <button class="reload-record" id="{{view_id|safe}}Reload" hidden hx-get="{{request.path}}?{{request.GET.urlencode}}" hx-target="#{{view_id|safe}}" hx-swap="outerHTML">
   </button>
   {% if show_filter_tags %} {% include "generic/filter_tags.html" %} {% endif %}
   <div class="oh-card">
@@ -326,10 +326,10 @@
       reloadSelectedCount($('#count_{{view_id|safe}}'),'{{selected_instances_key_id}}');
       reloadSelectedCount($('.count_{{view_id|safe}}'));
       var tabId = $("#{{view_id}}").closest(".oh-tabs__content").attr("id")
-      let badge = $(`#badge-${tabId}`)
-      let count = "{{queryset.paginator.count}}"
-      let label = badge.attr("data-badge-label") || ""
-      let title = count + " " + label
+      var badge = $(`#badge-${tabId}`)
+      var count = "{{queryset.paginator.count}}"
+      var label = badge.attr("data-badge-label") || ""
+      var title = count + " " + label
       badge.html(count)
       badge.attr("title",title)
     </script>

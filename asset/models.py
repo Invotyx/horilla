@@ -24,6 +24,7 @@ class AssetCategory(HorillaModel):
     asset_category_description = models.TextField(max_length=255)
     objects = models.Manager()
     company_id = models.ManyToManyField(Company, blank=True, verbose_name=_("Company"))
+    objects = HorillaCompanyManager("company_id")
 
     def __str__(self):
         return f"{self.asset_category_name}"
@@ -38,6 +39,14 @@ class AssetLot(HorillaModel):
     lot_description = models.TextField(null=True, blank=True, max_length=255)
     company_id = models.ManyToManyField(Company, blank=True, verbose_name=_("Company"))
     objects = HorillaCompanyManager()
+
+    class Meta:
+        """
+        Meta class to add additional options
+        """
+
+        verbose_name = _("Asset Batch")
+        verbose_name_plural = _("Asset Batches")
 
     def __str__(self):
         return f"{self.lot_number}"
@@ -69,6 +78,9 @@ class Asset(HorillaModel):
     expiry_date = models.DateField(null=True, blank=True)
     notify_before = models.IntegerField(default=1, null=True)
     objects = HorillaCompanyManager("asset_category_id__company_id")
+
+    class Meta:
+        ordering = ["-created_at"]
 
     def __str__(self):
         return f"{self.asset_name}-{self.asset_tracking_id}"
@@ -183,6 +195,9 @@ class AssetAssignment(HorillaModel):
     assign_images = models.ManyToManyField(
         ReturnImages, blank=True, related_name="assign_images"
     )
+    objects = HorillaCompanyManager(
+        "assigned_to_employee_id__employee_work_info__company_id"
+    )
 
     class Meta:
         """Meta class for AssetAssignment model"""
@@ -226,3 +241,21 @@ class AssetRequest(HorillaModel):
         """Meta class for AssetRequest model"""
 
         ordering = ["-id"]
+
+    def status_html_class(self):
+        COLOR_CLASS = {
+            "Approved": "oh-dot--success",
+            "Requested": "oh-dot--info",
+            "Rejected": "oh-dot--danger",
+        }
+
+        LINK_CLASS = {
+            "Approved": "link-success",
+            "Requested": "link-info",
+            "Rejected": "link-danger",
+        }
+        status = self.asset_request_status
+        return {
+            "color": COLOR_CLASS.get(status),
+            "link": LINK_CLASS.get(status),
+        }

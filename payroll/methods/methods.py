@@ -40,7 +40,6 @@ def get_total_days(start_date, end_date):
         start_date = date(2023, 1, 1)
         end_date = date(2023, 1, 10)
         days_on_period = get_total_days(start_date, end_date)
-        print(days_on_period)  # Output: 10
     """
     delta = end_date - start_date
     total_days = delta.days + 1  # Add 1 to include the end date itself
@@ -192,6 +191,8 @@ def hourly_computation(employee, wage, start_date, end_date):
     return {
         "basic_pay": basic_pay,
         "loss_of_pay": 0,
+        "paid_days": len(attendances_on_period),
+        "unpaid_days": 0,
     }
 
 
@@ -281,6 +282,8 @@ def daily_computation(employee, wage, start_date, end_date):
     return {
         "basic_pay": basic_pay,
         "loss_of_pay": loss_of_pay,
+        "paid_days": total_working_days,
+        "unpaid_days": unpaid_leaves,
     }
 
 
@@ -355,6 +358,53 @@ def months_between_range(wage, start_date, end_date):
         current_date = (current_date + relativedelta(day=1, months=1)).replace(day=1)
 
     return months_data
+
+
+def compute_yearly_taxable_amount(
+    monthly_taxable_amount=None,
+    default_yearly_taxable_amount=None,
+    *args,
+    **kwargs,
+):
+    """
+    Compute yearly taxable amount custom logic
+    eg:
+        default_yearly_taxable_amount = monthly_taxable_amount * 12
+    """
+    return default_yearly_taxable_amount
+
+
+def convert_year_tax_to_period(
+    federal_tax_for_period=None,
+    yearly_tax=None,
+    total_days=None,
+    start_date=None,
+    end_date=None,
+    *args,
+    **kwargs,
+):
+    """
+    Method to convert yearly taxable to monthly
+    """
+    return federal_tax_for_period
+
+
+def compute_net_pay(
+    net_pay=None,
+    gross_pay=None,
+    total_pretax_deduction=None,
+    total_post_tax_deduction=None,
+    total_tax_deductions=None,
+    federal_tax=None,
+    loss_of_pay_amount=None,
+    *args,
+    **kwargs,
+):
+    """
+    Compute net pay | Additional logic
+    """
+
+    return net_pay
 
 
 def monthly_computation(employee, wage, start_date, end_date):

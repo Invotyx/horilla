@@ -83,11 +83,6 @@ def question_order_update(request):
         new_position = int(request.POST.get("new_position"))
         qs = RecruitmentSurvey.objects.get(id=question_id)
 
-        print("____OLD POSITION______")
-        print(qs.sequence)
-        print("____NEW POSITION______")
-        print(new_position)
-
         if qs.sequence > new_position:
             new_position = new_position
         if qs.sequence <= new_position:
@@ -200,7 +195,7 @@ def view_question_template(request):
         for manager in i.recruitment_managers.all():
             if request.user.employee_get == manager:
                 ids.append(i.id)
-    if request.user.has_perm("view_recruitmentsurvey"):
+    if request.user.has_perm("recruitment.view_recruitmentsurvey"):
         questions = RecruitmentSurvey.objects.all()
     else:
         questions = RecruitmentSurvey.objects.filter(recruitment_ids__in=ids)
@@ -315,7 +310,7 @@ def create_question_template(request):
 
 
 @login_required
-@permission_required(perm="recriutment.delete_recruitmentsurvey")
+@permission_required(perm="recruitment.delete_recruitmentsurvey")
 def delete_survey_question(request, survey_id):
     """
     This method is used to delete the survey instance
@@ -363,8 +358,8 @@ def application_form(request):
             candidate_obj = form.save(commit=False)
             recruitment_obj = candidate_obj.recruitment_id
             stages = recruitment_obj.stage_set.all()
-            if stages.filter(stage_type="initial").exists():
-                candidate_obj.stage_id = stages.filter(stage_type="initial").first()
+            if stages.filter(stage_type="applied").exists():
+                candidate_obj.stage_id = stages.filter(stage_type="applied").first()
             else:
                 candidate_obj.stage_id = stages.order_by("sequence").first()
             messages.success(request, _("Application saved."))
@@ -441,11 +436,18 @@ def single_survey(request, survey_id):
 
 @login_required
 @hx_request_required
-@permission_required("recruitment.add_surveytemplate")
 def create_template(request):
     """
     Create question template views
     """
+    # Check if the user has any of the two permissions
+    if not (
+        request.user.has_perm("recruitment.add_surveytemplate")
+        or request.user.has_perm("recruitment.change_surveytemplate")
+    ):
+        messages.info(request, "You dont have permission.")
+        return HttpResponse("<script>window.location.reload()</script>")
+
     title = request.GET.get("title")
     instance = None
     if title:

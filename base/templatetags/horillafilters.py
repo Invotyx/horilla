@@ -16,7 +16,7 @@ from django.template import TemplateSyntaxError
 from django.template.defaultfilters import register
 from django.utils.translation import gettext as _
 
-from base.models import EmployeeShiftSchedule
+from base.models import Company, EmployeeShiftSchedule
 from employee.methods.duration_methods import strtime_seconds
 from horilla.horilla_middlewares import _thread_locals
 from horilla.methods import get_horilla_model_class
@@ -87,11 +87,14 @@ def is_clocked_in(user):
         last_attendance = (
             employee.employee_attendances.all().order_by("attendance_date", "id").last()
         )
-        if last_attendance is not None:
+        if last_attendance is not None and last_attendance.attendance_clock_out:
             last_activity = employee.employee_attendance_activities.filter(
                 attendance_date=last_attendance.attendance_date
             ).last()
-            return False if last_activity is None else last_activity.clock_out is None
+            if not last_activity:
+                return False
+            return last_activity.clock_out is None
+        return True
     return False
 
 
@@ -286,3 +289,50 @@ def on_off(value):
         return _("Yes")
     elif value == "off":
         return _("No")
+
+
+@register.filter(name="currency_symbol_position")
+def currency_symbol_position(amount):
+    if apps.is_installed("payroll"):
+        PayrollSettings = get_horilla_model_class(
+            app_label="payroll", model="payrollsettings"
+        )
+    symbol = PayrollSettings.objects.first()
+
+    currency = symbol.currency_symbol if symbol else "$"
+
+    if symbol.position == "postfix":
+        currency_symbol = f"{amount} {currency}"
+    else:
+        currency_symbol = f"{currency} {amount}"
+
+    return currency_symbol
+
+
+@register.filter(name="is_check_in_enabled")
+def is_check_in_enabled(request):
+    """
+    This method checks whether the check-in/check-out feature is enabled.
+    """
+    from attendance.models import AttendanceGeneralSetting
+
+    # from base.models import Company  # Assuming Company is the correct model for `selected_company`
+    selected_company = request.session.get("selected_company")
+    if not selected_company:
+        return False  # Safeguard if session key is missing
+
+    # Fetch the settings based on the selected company
+    if selected_company == "all":
+        attendance_settings = AttendanceGeneralSetting.objects.filter(
+            company_id=None
+        ).first()
+    else:
+        company = Company.objects.filter(id=selected_company).first()
+        if not company:
+            return False  # Return False if the company doesn't exist
+        attendance_settings = AttendanceGeneralSetting.objects.filter(
+            company_id=company
+        ).first()
+
+    # Check if check-in is enabled
+    return bool(attendance_settings and attendance_settings.enable_check_in)

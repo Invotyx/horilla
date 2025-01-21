@@ -19,17 +19,17 @@ class DocumentRequestForm(ModelForm):
         exclude = ["is_active"]
 
     def clean(self):
-        for field_name, field_instance in self.fields.items():
-            if isinstance(field_instance, HorillaMultiSelectField):
-                self.errors.pop(field_name, None)
-                if len(self.data.getlist(field_name)) < 1:
-                    raise forms.ValidationError({field_name: "Thif field is required"})
-                cleaned_data = super().clean()
-                employee_data = self.fields[field_name].queryset.filter(
-                    id__in=self.data.getlist(field_name)
-                )
-                cleaned_data[field_name] = employee_data
         cleaned_data = super().clean()
+        if isinstance(self.fields["employee_id"], HorillaMultiSelectField):
+            self.errors.pop("employee_id", None)
+            if len(self.data.getlist("employee_id")) < 1:
+                raise forms.ValidationError({"employee_id": "This field is required"})
+
+            employee_data = self.fields["employee_id"].queryset.filter(
+                id__in=self.data.getlist("employee_id")
+            )
+            cleaned_data["employee_id"] = employee_data
+
         return cleaned_data
 
     def __init__(self, *args, **kwargs):
@@ -52,11 +52,6 @@ class DocumentRequestForm(ModelForm):
 class DocumentForm(ModelForm):
     """form to create a new Document"""
 
-    expiry_date = forms.DateField(
-        widget=forms.DateInput(attrs={"type": "date"}),
-        required=False,
-    )
-
     verbose_name = "Document"
 
     class Meta:
@@ -65,6 +60,12 @@ class DocumentForm(ModelForm):
         exclude = ["document_request_id", "status", "reject_reason", "is_active"]
         widgets = {
             "employee_id": forms.HiddenInput(),
+            "issue_date": forms.DateInput(
+                attrs={"type": "date", "class": "oh-input  w-100"}
+            ),
+            "expiry_date": forms.DateInput(
+                attrs={"type": "date", "class": "oh-input  w-100"}
+            ),
         }
 
     def as_p(self):
@@ -80,15 +81,19 @@ class DocumentUpdateForm(ModelForm):
     """form to Update a Document"""
 
     verbose_name = "Document"
-    expiry_date = forms.DateField(
-        widget=forms.DateInput(attrs={"type": "date"}),
-        required=False,
-    )
 
     class Meta:
         model = Document
         fields = "__all__"
         exclude = ["is_active"]
+        widgets = {
+            "issue_date": forms.DateInput(
+                attrs={"type": "date", "class": "oh-input  w-100"}
+            ),
+            "expiry_date": forms.DateInput(
+                attrs={"type": "date", "class": "oh-input  w-100"}
+            ),
+        }
 
 
 class DocumentRejectForm(ModelForm):

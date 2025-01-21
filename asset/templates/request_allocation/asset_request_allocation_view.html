@@ -238,12 +238,14 @@
 				{% if perms.asset.view_assetassignment %}
 				<li class="oh-tabs__tab" data-target="#tab_2">
 					{% trans "Asset Allocation" %}
-					<a class="oh-btn oh-btn--secondary-outline" role="button" data-toggle="oh-modal-toggle"
-						onclick="event.stopPropagation()" data-target="#objectCreateModal"
-						hx-get="{% url 'asset-allocate-creation' %}" hx-target="#objectCreateModalTarget"
-						title="{% trans 'Create allocation' %}">
-						<ion-icon name="add-outline" role="img" class="md hydrated" aria-label="add outline"></ion-icon>
-					</a>
+					{% if perms.asset.add_assetassignment %}
+						<a class="oh-btn oh-btn--secondary-outline" role="button" data-toggle="oh-modal-toggle"
+							onclick="event.stopPropagation()" data-target="#objectCreateModal"
+							hx-get="{% url 'asset-allocate-creation' %}" hx-target="#objectCreateModalTarget"
+							title="{% trans 'Create allocation' %}">
+							<ion-icon name="add-outline" role="img" class="md hydrated" aria-label="add outline"></ion-icon>
+						</a>
+					{% endif %}
 				</li>
 				{% endif %}
 			</ul>
@@ -253,18 +255,6 @@
 		</div>
 	</div>
 </main>
-<div class="oh-modal" id="assetFineModal" role="dialog" aria-labelledby="assetFineModal" aria-hidden="true"
-	style="z-index: 1022;">
-	<div class="oh-modal__dialog">
-		<div class="oh-modal__dialog-header">
-			<button type="button" class="oh-modal_close--custom"
-				onclick="$('#assetFineModal').removeClass('oh-modal--show');">
-				<ion-icon name="close-outline" role="img" aria-label="close outline"></ion-icon>
-			</button>
-		</div>
-		<div class="oh-modal__dialog-body" id="assetFineModalBody"></div>
-	</div>
-</div>
 
 <!-- end  of  asset request modal start -->
 <script>
@@ -277,7 +267,7 @@
 			$(".filterButton")[0].click();
 		});
 
-		$("#assetFineModalBody").on("htmx:afterSwap", function () {
+		$("#dynamicCreateModalTarget").on("htmx:afterSwap", function () {
 			$("[name='installment_amount']").on("change keyup", function () {
 				var loanAmount = $("[name='loan_amount']").val();
 				var installmentAmount = $(this).val();

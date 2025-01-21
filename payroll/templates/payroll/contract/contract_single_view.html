@@ -1,4 +1,4 @@
-{% load i18n %} {% load yes_no %} {% load static %}
+{% load i18n %} {% load static %} {% load horillafilters %}
 {% if messages %}
     <div class="oh-wrapper">
         {% for message in messages %}
@@ -94,7 +94,7 @@
                 <div class="oh-timeoff-modal__stat">
                     {% if contract.calculate_daily_leave_amount %}
                         <span class="oh-timeoff-modal__stat-title">{% trans "Calculate Leave Amount" %}</span>
-                        <span class="oh-timeoff-modal__stat-count">{{contract.calculate_daily_leave_amount|yesno|capfirst}}</span>
+                        <span class="oh-timeoff-modal__stat-count">{{contract.calculate_daily_leave_amount|yes_no}}</span>
                     {% else %}
                         <span class="oh-timeoff-modal__stat-title">{% trans "Deduction Amount For One Leave" %}</span>
                         <span class="oh-timeoff-modal__stat-count">{{contract.deduction_for_one_leave_amount}}</span>
@@ -102,7 +102,7 @@
                 </div>
                 <div class="oh-timeoff-modal__stat" style="margin-left: 20px;">
                     <span class="oh-timeoff-modal__stat-title">{% trans "Deduct From Basic Pay" %}</span>
-                    <span class="oh-timeoff-modal__stat-count">{{contract.deduct_leave_from_basic_pay|yesno|capfirst}}</span>
+                    <span class="oh-timeoff-modal__stat-count">{{contract.deduct_leave_from_basic_pay|yes_no}}</span>
                 </div>
             </div>
             <div class="oh-timeoff-modal__stats-container mt-3 mb-3">
@@ -165,7 +165,7 @@
                 <div class="oh-modal__button-container text-center">
                     <div class="oh-btn-group">
                         {% if perms.payroll.change_contract  %}
-                            <a href="{% url 'update-contract' contract.id %}" class="oh-btn oh-btn--info" style="width: 50%;">
+                            <a href="{% url 'update-contract' contract.id %}" class="oh-btn oh-btn--info" style="width: 100%;">
                                 <ion-icon
                                 name="create-outline"
                                 role="img"
@@ -175,7 +175,7 @@
                             </a>
                         {% endif %}
                         {% if perms.payroll.delete_contract  %}
-                            <button class="oh-btn oh-btn--danger" style="width: 50%;" data-action="delete"
+                            <button class="oh-btn oh-btn--danger" style="width: 100%;" data-action="delete"
                                 hx-confirm="{% trans 'Do you want to delete this Contract?' %}" hx-target="{{delete_hx_target}}"
                                 hx-post="{% url 'delete-contract-modal' contract.id %}?{{pd}}&instances_ids={{contract_ids}}"
                                 >

@@ -8,53 +8,27 @@
 
     <div class="oh-main__titlebar-button-container">
 
-      <div class="oh-btn-group ml-2">
-        <div>
-          <a
-            class="oh-btn oh-btn--secondary oh-btn--shadow"
-            data-target="#allowanceModal"
-            href="{% url 'create-allowance' %}"
-          >
-            <ion-icon
-              class="me-2 md hydrated"
-              name="add-outline"
-              role="img"
-              aria-label="add outline"
-            ></ion-icon
-            >{% trans "Create" %}</a
-          >
+        <div class="oh-btn-group ml-2">
+          {% if perms.payroll.add_allowance %}
+            <div>
+              <a
+                class="oh-btn oh-btn--secondary oh-btn--shadow"
+                href="{% url 'create-allowance' %}"
+              >
+                <ion-icon
+                  class="me-2 md hydrated"
+                  name="add-outline"
+                  role="img"
+                  aria-label="add outline"
+                ></ion-icon
+                >{% trans "Create" %}</a
+              >
+            </div>
+          {% endif %}
         </div>
       </div>
-    </div>
   </div>
 </section>
-
-
-
-
-<div
-  class="oh-modal"
-  id="allowanceModal"
-  role="dialog"
-  aria-labelledby="allowanceModal"
-  aria-hidden="true"
->
-  <div class="oh-modal__dialog">
-    <div class="oh-modal__dialog-header">
-      <h2 class="oh-modal__dialog-title" id="addEmployeeModalLabel">
-        {% trans "Add Allowance" %}
-      </h2>
-      <button
-        class="oh-modal__close"
-        aria-label="Close"
-
-      >
-        <ion-icon name="close-outline"></ion-icon>
-      </button>
-    </div>
-    <div class="oh-modal__dialog-body" id="allowanceModalBody"></div>
-  </div>
-</div>
 
 <div
 class="oh-wrapper-main"

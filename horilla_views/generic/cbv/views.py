@@ -15,10 +15,10 @@ from django.http import HttpRequest, HttpResponse, QueryDict
 from django.shortcuts import render
 from django.urls import resolve, reverse
 from django.utils.decorators import method_decorator
-from django.utils.translation import gettext_lazy as _trans
+from django.utils.translation import gettext_lazy as _
 from django.views.generic import DetailView, FormView, ListView, TemplateView
 
-from base.methods import closest_numbers, get_key_instances
+from base.methods import closest_numbers, eval_validate, get_key_instances
 from horilla.filters import FilterSet
 from horilla.group_by import group_by_queryset
 from horilla.horilla_middlewares import _thread_locals
@@ -48,7 +48,7 @@ class HorillaListView(ListView):
 
     export_file_name: str = None
 
-    template_name: str = "generic/horilla_list.html"
+    template_name: str = "generic/horilla_list_table.html"
     context_object_name = "queryset"
     # column = [("Verbose Name","field_name","avatar_mapping")], opt: avatar_mapping
     columns: list = []
@@ -87,6 +87,7 @@ class HorillaListView(ListView):
     selected_instances_key_id: str = "selectedInstances"
 
     show_filter_tags: bool = True
+    show_toggle_form: bool = True
     filter_keys_to_remove: list = []
 
     records_per_page: int = 50
@@ -95,6 +96,8 @@ class HorillaListView(ListView):
 
     bulk_update_fields: list = []
     bulk_template: str = "generic/bulk_form.html"
+
+    header_attrs: dict = {}
 
     def __init__(self, **kwargs: Any) -> None:
         if not self.view_id:
@@ -139,7 +142,7 @@ class HorillaListView(ListView):
         form = self.get_bulk_form()
         form.verbose_name = (
             form.verbose_name
-            + f" ({len((eval(request.GET.get('instance_ids','[]'))))} {_trans('Records')})"
+            + f" ({len((eval_validate(request.GET.get('instance_ids','[]'))))} {_('Records')})"
         )
         return render(
             request,
@@ -155,7 +158,7 @@ class HorillaListView(ListView):
             return HttpResponse("You dont have permission")
 
         instance_ids = request.GET.get("instance_ids", "[]")
-        instance_ids = eval(instance_ids)
+        instance_ids = eval_validate(instance_ids)
         form = DynamicBulkUpdateForm(
             request.POST,
             request.FILES,
@@ -165,6 +168,7 @@ class HorillaListView(ListView):
         )
         if instance_ids and form.is_valid():
             form.save()
+            messages.success(request, _("Selected Records updated"))
 
             script_id = get_short_uuid(length=3, prefix="bulk")
             return HttpResponse(
@@ -177,7 +181,7 @@ class HorillaListView(ListView):
                 """
             )
         if not instance_ids:
-            messages.info(request, _trans("No records selected"))
+            messages.info(request, _("No records selected"))
         return render(
             request,
             self.bulk_template,
@@ -216,7 +220,7 @@ class HorillaListView(ListView):
                     is_default=True,
                 ).first()
                 if not bool(query_dict) and default_filter:
-                    data = eval(default_filter.filter)
+                    data = eval_validate(default_filter.filter)
                     query_dict = QueryDict("", mutable=True)
                     for key, value in data.items():
                         query_dict[key] = value
@@ -235,6 +239,7 @@ class HorillaListView(ListView):
         context["columns"] = self.visible_column
         context["hidden_columns"] = list(set(self.columns) - set(self.visible_column))
         context["toggle_form"] = self.toggle_form
+        context["show_toggle_form"] = self.show_toggle_form
         context["search_url"] = self.search_url
 
         context["action_method"] = self.action_method
@@ -243,6 +248,8 @@ class HorillaListView(ListView):
         context["option_method"] = self.option_method
         context["options"] = self.options
         context["row_attrs"] = self.row_attrs
+
+        context["header_attrs"] = self.header_attrs
 
         context["show_filter_tags"] = self.show_filter_tags
         context["bulk_select_option"] = self.bulk_select_option
@@ -287,13 +294,16 @@ class HorillaListView(ListView):
             keys_to_remove = [
                 key
                 for key, value in data_dict.items()
-                if value[0] in ["unknown", "on"] + self.filter_keys_to_remove
+                if key in ["filter_applied", "nav_url"] + self.filter_keys_to_remove
             ]
 
-            for key in keys_to_remove + ["referrer"]:
+            for key in (
+                keys_to_remove + ["referrer", "nav_url"] + self.filter_keys_to_remove
+            ):
                 if key in data_dict.keys():
                     data_dict.pop(key)
             context["filter_dict"] = data_dict
+            context["keys_to_remove"] = keys_to_remove
 
         request = self.request
         ordered_ids = list(queryset.values_list("id", flat=True))
@@ -327,7 +337,7 @@ class HorillaListView(ListView):
 
         if request and self._saved_filters.get("field"):
             field = self._saved_filters.get("field")
-            self.template_name = "generic/group_by.html"
+            self.template_name = "generic/group_by_table.html"
             if isinstance(queryset, Page):
                 queryset = self.filter_class(
                     request.GET, queryset=queryset.object_list.model.objects.all()
@@ -389,8 +399,8 @@ class HorillaListView(ListView):
         from import_export import fields, resources
 
         request = getattr(_thread_locals, "request", None)
-        ids = eval(request.GET["ids"])
-        _columns = eval(request.GET["columns"])
+        ids = eval_validate(request.GET["ids"])
+        _columns = eval_validate(request.GET["columns"])
         queryset = self.model.objects.filter(id__in=ids)
 
         _model = self.model
@@ -492,11 +502,16 @@ class HorillaDetailedView(DetailView):
 
     title = "Detailed View"
     template_name = "generic/horilla_detailed_view.html"
-    header: dict = {"title": "Horilla", "subtitle": "Horilla Detailed View"}
+    header: dict = {
+        "title": "Horilla",
+        "subtitle": "Horilla Detailed View",
+        "avatar": "",
+    }
     body: list = []
 
     action_method: list = []
     actions: list = []
+    cols: dict = {}
 
     ids_key: str = "instance_ids"
 
@@ -508,9 +523,11 @@ class HorillaDetailedView(DetailView):
 
     def get_context_data(self, **kwargs: Any):
         context = super().get_context_data(**kwargs)
-        instance_ids = eval(str(self.request.GET.get(self.ids_key)))
+        instance_ids = eval_validate(str(self.request.GET.get(self.ids_key)))
 
         pk = context["object"].pk
+        if instance_ids:
+            context["object"].ordered_ids = instance_ids
         context["instance"] = context["object"]
 
         url = resolve(self.request.path)
@@ -534,6 +551,7 @@ class HorillaDetailedView(DetailView):
         context["body"] = self.body
         context["actions"] = self.actions
         context["action_method"] = self.action_method
+        context["cols"] = self.cols
 
         CACHE.get(self.request.session.session_key + "cbv")[
             HorillaDetailedView
@@ -653,7 +671,7 @@ class HorillaCardView(ListView):
                     is_default=True,
                 ).first()
                 if not bool(query_dict) and default_filter:
-                    data = eval(default_filter.filter)
+                    data = eval_validate(default_filter.filter)
                     query_dict = QueryDict("", mutable=True)
                     for key, value in data.items():
                         query_dict[key] = value
@@ -685,9 +703,12 @@ class HorillaCardView(ListView):
                 if value[0] in ["unknown", "on"] + self.filter_keys_to_remove
             ]
 
-            for key in keys_to_remove + ["referrer"]:
+            for key in (
+                keys_to_remove + ["referrer", "nav_url"] + self.filter_keys_to_remove
+            ):
                 if key in data_dict.keys():
                     data_dict.pop(key)
+
             context["filter_dict"] = data_dict
 
         ordered_ids = list(queryset.values_list("id", flat=True))
@@ -802,12 +823,16 @@ class HorillaFormView(FormView):
 
     # NOTE: Dynamic create view's forms save method will be overwritten
     is_dynamic_create_view: bool = False
+    # [(field_name,DynamicFormView,[other_field1,...])] # other_fields
+    # can be mentioned like this to pass the field selected
     dynamic_create_fields: list = []
 
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         request = getattr(_thread_locals, "request", None)
         self.request = request
+        if not self.success_url:
+            self.success_url = self.request.path
         update_initial_cache(request, CACHE, HorillaFormView)
 
         if self.form_class:
@@ -828,7 +853,7 @@ class HorillaFormView(FormView):
         response = super().post(request, *args, **kwargs)
         return response
 
-    def init_form(self, *args, data=None, files=None, instance=None, **kwargs):
+    def init_form(self, *args, data={}, files={}, instance=None, **kwargs):
         """
         method where first the form where initialized
         """
@@ -854,7 +879,7 @@ class HorillaFormView(FormView):
             pk = self.form.instance.pk
         # next/previous option in the forms
         if pk and self.request.GET.get(self.ids_key):
-            instance_ids = eval(str(self.request.GET.get(self.ids_key)))
+            instance_ids = eval_validate(str(self.request.GET.get(self.ids_key)))
             url = resolve(self.request.path)
             key = list(url.kwargs.keys())[0]
             url_name = url.url_name
@@ -879,6 +904,7 @@ class HorillaFormView(FormView):
         return self.model.objects.filter(pk=pk).first()
 
     def get_form(self, form_class=None):
+
         pk = self.kwargs.get("pk")
         if not hasattr(self, "form"):
             instance = self.get_queryset()
@@ -889,7 +915,10 @@ class HorillaFormView(FormView):
                 files = self.request.FILES
             form = self.init_form(data=data, files=files, instance=instance)
             if self.is_dynamic_create_view:
-                setattr(type(form), "save", save)
+                # setattr(type(form), "save", save)
+                from types import MethodType
+
+                form.save = MethodType(save, form)
 
             if self.request.method == "GET":
                 [
@@ -902,9 +931,13 @@ class HorillaFormView(FormView):
                     view = dynamic_tuple[1]
                     view.display_title = "Dynamic create"
                     field = dynamic_tuple[0]
+                    additional_data_fields = []
+                    if len(dynamic_tuple) == 3:
+                        additional_data_fields = dynamic_tuple[2]
                     key = self.request.session.session_key + "cbv" + field
                     field_instance = form.instance._meta.get_field(field)
-                    value = []
+                    value = form.initial.get(field, [])
+
                     form_field = forms.ChoiceField
                     if isinstance(field_instance, models.models.ManyToManyField):
                         form_field = forms.MultipleChoiceField
@@ -915,7 +948,7 @@ class HorillaFormView(FormView):
                                 )
                             )
                     else:
-                        value = getattribute(getattribute(form.instance, field), "pk")
+                        value = getattr(getattribute(form.instance, field), "pk", value)
                     CACHE.set(
                         key,
                         {
@@ -941,13 +974,44 @@ class HorillaFormView(FormView):
                     choices.insert(0, ("", "Select option"))
                     choices.append(("dynamic_create", "Dynamic create"))
                     attrs = form.fields[field].widget.attrs
+                    for data_field in additional_data_fields:
+
+                        data_field_attr = form.fields[data_field].widget.attrs
+                        if (
+                            f"$('#modalButton{field}Form [name={data_field}]').val(this.value);"
+                            not in data_field_attr.get("onchange", "")
+                        ):
+                            data_field_attr["onchange"] = (
+                                data_field_attr.get("onchange", "")
+                                + f"""
+                                if(this.value != 'dynamic_create'){{
+                                $('#modalButton{field}Form [name={data_field}]').val(this.value);
+                                }}
+                            """
+                            )
+
                     form.fields[field] = form_field(
                         choices=choices,
                         label=form.fields[field].label,
                         required=form.fields[field].required,
                     )
+                    form.fields[field].widget.option_template_name = (
+                        "horilla_widgets/select_option.html",
+                    )
                     form.fields[field].widget.attrs = attrs
                     form.initial[field] = value
+                for dynamic_tuple in self.dynamic_create_fields:
+                    field = dynamic_tuple[0]
+                    onchange = form.fields[field].widget.attrs.get("onchange", "")
+                    if onchange:
+                        CACHE.set(
+                            self.request.session.session_key
+                            + "cbv"
+                            + field
+                            + "onchange",
+                            onchange,
+                        )
+
             if pk:
                 form.instance = instance
                 title = str(instance)
@@ -985,6 +1049,7 @@ class HorillaNavView(TemplateView):
     filter_instance: FilterSet = None
     filter_instance_context_name: str = ""
     filter_body_template: str = ""
+    empty_inputs: list = []
     view_types: list = []
     create_attrs: str = """"""
 
@@ -1007,6 +1072,14 @@ class HorillaNavView(TemplateView):
         context["create_attrs"] = self.create_attrs
         context["search_in"] = self.search_in
         context["filter_instance_context_name"] = self.filter_instance
+        last_filter = CACHE.get(
+            self.request.session.session_key
+            + "last-applied-filter"
+            + self.request.path,
+            {},
+        )
+        context["empty_inputs"] = self.empty_inputs + ["nav_url"]
+        context["last_filter"] = dict(last_filter)
         if self.filter_instance:
             context[self.filter_form_context_name] = self.filter_instance.form
         context["active_view"] = models.ActiveView.objects.filter(
@@ -1025,6 +1098,8 @@ class HorillaProfileView(DetailView):
     template_name = "generic/horilla_profile_view.html"
     view_id: str = None
     filter_class: FilterSet = None
+    push_url: str = None
+    key_name: str = "pk"
 
     # add these method under the model
     # get_avatar --> image/profile
@@ -1118,7 +1193,7 @@ class HorillaProfileView(DetailView):
         instance_ids_str = self.request.GET.get("instance_ids")
         if not instance_ids_str:
             instance_ids_str = "[]"
-        instance_ids = eval(instance_ids_str)
+        instance_ids = eval_validate(instance_ids_str)
         if instance_ids:
             CACHE.set(
                 f"{self.request.session.session_key}hpv-instance-ids", instance_ids
@@ -1145,10 +1220,14 @@ class HorillaProfileView(DetailView):
         url_name = url.url_name
         next_url = reverse(url_name, kwargs={key: next_id})
         previous_url = reverse(url_name, kwargs={key: previous_id})
+        push_url_next = reverse(self.push_url, kwargs={self.key_name: next_id})
+        push_url_prev = reverse(self.push_url, kwargs={self.key_name: previous_id})
         context["instance_ids"] = str(instance_ids)
         if instance_ids:
             context["next_url"] = next_url
             context["previous_url"] = previous_url
+            context["push_url_next"] = push_url_next
+            context["push_url_prev"] = push_url_prev
 
         context["display_count"] = display_count
         context["actions"] = self.actions

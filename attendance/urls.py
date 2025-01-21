@@ -218,17 +218,32 @@ urlpatterns = [
         name="approve-bulk-overtime",
     ),
     path(
+        "attendance-add-to-batch",
+        views.attendance_add_to_batch,
+        name="attendance-add-to-batch",
+    ),
+    path(
         "dashboard", attendance.views.dashboard.dashboard, name="attendance-dashboard"
+    ),
+    path(
+        "on-break-employees",
+        attendance.views.dashboard.on_break_employees,
+        name="on-break-employees",
+    ),
+    path(
+        "dashboard-approve-overtimes",
+        attendance.views.dashboard.dashboard_approve_overtimes,
+        name="dashboard-approve-overtimes",
+    ),
+    path(
+        "dashboard-validate-attendances",
+        attendance.views.dashboard.dashboard_validate_attendances,
+        name="dashboard-validate-attendances",
     ),
     path(
         "department-overtime-chart",
         attendance.views.dashboard.department_overtime_chart,
         name="department-overtime-chart",
-    ),
-    path(
-        "attendance-validate-table/",
-        attendance.views.dashboard.validated_attendances_table,
-        name="attendance-validate-table",
     ),
     path(
         "dashboard-attendance/",
@@ -296,6 +311,18 @@ urlpatterns = [
         name="request-new-attendance",
     ),
     path(
+        "create-batch-attendance",
+        attendance.views.requests.create_batch_attendance,
+        name="create-batch-attendance",
+    ),
+    path("get-batches", attendance.views.requests.get_batches, name="get-batches"),
+    path("update-title", attendance.views.requests.update_title, name="update-title"),
+    path(
+        "delete-batch/<int:batch_id>",
+        attendance.views.requests.delete_batch,
+        name="delete-batch",
+    ),
+    path(
         "employee-widget-filter",
         attendance.views.search.widget_filter,
         name="attendance-widget-filter",
@@ -306,6 +333,11 @@ urlpatterns = [
         name="update-fields-based-shift",
     ),
     path(
+        "update-worked-hour-field",
+        views.update_worked_hour_field,
+        name="update-worked-hour-field",
+    ),
+    path(
         "update-date-details",
         views.form_date_checking,
         name="update-date-details",
@@ -314,6 +346,11 @@ urlpatterns = [
         "user-request-one-view/<int:id>",
         views.user_request_one_view,
         name="user-request-one-view",
+    ),
+    path(
+        "get-attendance-activities/<int:obj_id>",
+        views.get_attendance_activities,
+        name="get-attendance-activities",
     ),
     path(
         "hour-attendance-select/",
@@ -414,16 +451,6 @@ urlpatterns = [
         name="cut-penalty",
     ),
     path(
-        "dashboard-overtime-approve",
-        attendance.views.dashboard.dashboard_overtime_approve,
-        name="dashboard-overtime-approve",
-    ),
-    path(
-        "dashboard-attendance-validate",
-        attendance.views.dashboard.dashboard_attendance_validate,
-        name="dashboard-attendance-validate",
-    ),
-    path(
         "attendance-settings-view/",
         views.validation_condition_view,
         name="attendance-settings-view",
@@ -437,6 +464,16 @@ urlpatterns = [
         "enable-disable-tracking-late-come-early-out",
         views.enable_disable_tracking_late_come_early_out,
         name="enable-disable-tracking-late-come-early-out",
+    ),
+    path(
+        "check-in-check-out-setting/",
+        views.check_in_check_out_setting,
+        name="check-in-check-out-setting",
+    ),
+    path(
+        "enable-disable-check-in",
+        views.enable_disable_check_in,
+        name="enable-disable-check-in",
     ),
     path(
         "grace-settings-view/",

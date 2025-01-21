@@ -98,53 +98,63 @@ def get_diff_dict(first_dict, other_dict, model=None):
     Args:
         first_dict: The first dictionary to compare.
         other_dict: The second dictionary to compare.
-        model: The model class
+        model: The model class (optional, for verbose names and type-specific formatting)
 
     Returns:
         A dictionary of differing keys with their old and new values.
     """
-    # model is passed as argument if any need of verbose name instead of field name
     difference = {}
-    if model is None:
-        for key in first_dict:
-            if first_dict[key] != other_dict[key]:
-                # get the verbose name of the field
-                difference[key] = (first_dict[key], other_dict[key])
-        return difference
-    for key in first_dict:
-        if first_dict[key] != other_dict[key]:
-            # get the verbose name of the field
-            field = model._meta.get_field(key)
-            verb_key = field.verbose_name
-            value = first_dict[key]
-            other_value = other_dict[key]
-            if isinstance(field, models.DateField):
-                if value is not None and value != "None":
-                    value = datetime.strptime(value, "%Y-%m-%d").strftime("%d %b %Y")
-                if other_value is not None and other_value != "None":
-                    other_value = datetime.strptime(other_value, "%Y-%m-%d").strftime(
-                        "%d %b %Y"
-                    )
-            elif isinstance(field, models.TimeField):
-                if value is not None and value != "None":
-                    if len(value.split(":")) == 2:
-                        value = value + ":00"
-                    value = datetime.strptime(value, "%H:%M:%S").strftime("%I:%M %p")
-                if other_value is not None and value != "None":
-                    if len(other_value.split(":")) == 2:
-                        other_value = other_value + ":00"
-                    if other_value != "None":
-                        other_value = datetime.strptime(
-                            other_value, "%H:%M:%S"
-                        ).strftime("%I:%M %p")
-                    else:
-                        other_value = "None"
-            elif isinstance(field, models.ForeignKey):
-                if value is not None and len(str(value)):
-                    value = field.related_model.objects.get(id=value)
-                if other_value is not None and len(str(other_value)):
-                    other_value = field.related_model.objects.get(id=other_value)
-            difference[verb_key] = (value, other_value)
+
+    for key, value in first_dict.items():
+        other_value = other_dict.get(key)
+        if value == other_value:
+            continue  # Skip if values are the same
+
+        if not model:
+            difference[key] = (value, other_value)
+            continue
+
+        # Fetch the model field metadata
+        field = model._meta.get_field(key)
+        verbose_key = field.verbose_name
+
+        # Handle specific field types
+        if isinstance(field, models.DateField):
+            value = (
+                datetime.strptime(value, "%Y-%m-%d").strftime("%d %b %Y")
+                if value and value != "None"
+                else value
+            )
+            other_value = (
+                datetime.strptime(other_value, "%Y-%m-%d").strftime("%d %b %Y")
+                if other_value and other_value != "None"
+                else other_value
+            )
+        elif isinstance(field, models.TimeField):
+
+            def format_time(val):
+                if val and val != "None":
+                    val += ":00" if len(val.split(":")) == 2 else ""
+                    return datetime.strptime(val, "%H:%M:%S").strftime("%I:%M %p")
+                return val
+
+            value = format_time(value)
+            other_value = format_time(other_value)
+        elif isinstance(field, models.ForeignKey):
+            value = (
+                field.related_model.objects.get(id=value)
+                if value and str(value).isdigit()
+                else value
+            )
+            other_value = (
+                field.related_model.objects.get(id=other_value)
+                if other_value and str(other_value).isdigit()
+                else other_value
+            )
+
+        # Add the difference
+        difference[verbose_key] = (value, other_value)
+
     return difference
 
 
@@ -228,6 +238,11 @@ def validate_time_format(value):
     """
     this method is used to validate the format of duration like fields.
     """
+    if value.count(":") == 2:
+        # If the format is "H:MM:SS", check if it can be reduced to "HH:MM"
+        # Django's DurationField internally converts it to a timedelta object, it becomes "0:00:00"
+        value = ":".join(value.split(":")[:2])
+
     if len(value) > 6:
         raise ValidationError(_("Invalid format, it should be HH:MM format"))
     try:
@@ -542,6 +557,14 @@ def parse_date(date_str, error_key, activity):
     except (pd.errors.ParserError, ValueError):
         activity[error_key] = f"Invalid date format for {error_key.split()[-1]}"
         return None
+
+
+def parse_datetime(date_str, time_str):
+    return (
+        datetime.strptime(f"{date_str} {time_str[:5]}", "%Y-%m-%d %H:%M")
+        if date_str and time_str
+        else None
+    )
 
 
 def get_date(date):

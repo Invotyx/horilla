@@ -125,11 +125,11 @@ urlpatterns = [
         "feedback-list-search", views.feedback_list_search, name="feedback-list-search"
     ),
     path("feedback-creation", views.feedback_creation, name="feedback-creation"),
-    path(
-        "feedback-creation-ajax",
-        views.feedback_creation_ajax,
-        name="feedback-creation-ajax",
-    ),
+    # path(
+    #     "feedback-creation-ajax",
+    #     views.feedback_creation_ajax,
+    #     name="feedback-creation-ajax",
+    # ),
     path("feedback-update/<int:id>", views.feedback_update, name="feedback-update"),
     path("feedback-delete/<int:id>", views.feedback_delete, name="feedback-delete"),
     path("feedback-archive/<int:id>", views.feedback_archive, name="feedback-archive"),
@@ -322,7 +322,7 @@ urlpatterns = [
         name="delete-employee-objective",
     ),
     path(
-        "change-employee-objective-status/<int:emp_obj>",
+        "change-employee-objective-status",
         views.change_employee_objective_status,
         name="change-employee-objective-status",
     ),
@@ -351,8 +351,9 @@ urlpatterns = [
         views.key_result_current_value_update,
         name="key-result-current-value-update",
     ),
+    path("get-keyresult-data", views.get_keyresult_data, name="get-keyresult-data"),
     path(
-        "view-meetings",
+        "view-meetings/",
         views.view_meetings,
         name="view-meetings",
     ),
@@ -365,10 +366,10 @@ urlpatterns = [
         "meetings-delete/<int:obj_id>/",
         object_delete,
         name="meetings-delete",
-        kwargs={"model": models.Meetings, "redirect": "/pms/view-meetings"},
+        kwargs={"model": models.Meetings, "HttpResponse": True},
     ),
     path(
-        "archive-meeting/<int:id>/",
+        "archive-meeting/<int:obj_id>/",
         views.archive_meetings,
         name="archive-meeting",
     ),
@@ -378,7 +379,7 @@ urlpatterns = [
         name="filter-meeting",
     ),
     path(
-        "add-response/<int:id>/",
+        "add-response/<int:obj_id>/",
         views.add_response,
         name="add-response",
     ),

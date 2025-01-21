@@ -6,6 +6,7 @@ import uuid
 
 import django_filters
 from django import forms
+from django.db.models import Q
 from django_filters import FilterSet
 
 from base.methods import reload_queryset
@@ -91,6 +92,9 @@ class AssetFilter(CustomFilterSet):
     Custom filter set for Asset instances.
     """
 
+    search = django_filters.CharFilter(method="search_method")
+    category = django_filters.CharFilter(field_name="asset_category_id")
+
     class Meta:
         """
         A nested class that specifies the configuration for the filter.
@@ -106,6 +110,15 @@ class AssetFilter(CustomFilterSet):
         super().__init__(*args, **kwargs)
         for visible in self.form.visible_fields():
             visible.field.widget.attrs["id"] = str(uuid.uuid4())
+
+    def search_method(self, queryset, _, value):
+        """
+        Search method
+        """
+        return (
+            queryset.filter(asset_name__icontains=value)
+            | queryset.filter(asset_category_id__asset_category_name__icontains=value)
+        ).distinct()
 
 
 class CustomAssetFilter(CustomFilterSet):
@@ -227,16 +240,9 @@ class AssetCategoryFilter(CustomFilterSet):
     Custom filter set for AssetCategory instances.
     """
 
+    search = django_filters.CharFilter(method="search_method")
+
     class Meta:
-        """
-        Specifies the model and fields to be used for filtering AssetCategory instances.
-
-        Attributes:
-            model (class): The model class AssetCategory to be filtered.
-            fields (str): A special value "__all__" to include all fields
-                          of the model in the filter.
-        """
-
         model = AssetCategory
         fields = "__all__"
 
@@ -244,6 +250,34 @@ class AssetCategoryFilter(CustomFilterSet):
         super().__init__(*args, **kwargs)
         for visible in self.form.visible_fields():
             visible.field.widget.attrs["id"] = str(uuid.uuid4())
+
+    def search_method(self, queryset, name, value):
+        """
+        Search method to filter by asset category name or related asset name.
+        """
+        if not value:
+            return queryset  # Return unfiltered queryset if no search term is provided
+
+        return queryset.filter(
+            Q(asset_category_name__icontains=value)
+            | Q(asset__asset_name__icontains=value)
+        ).distinct()
+
+    def filter_queryset(self, queryset):
+        """
+        Filters queryset and applies AssetFilter if necessary.
+        """
+        # Get the base filtered queryset
+        queryset = super().filter_queryset(queryset)
+
+        # Filter by assets if asset data is present in the GET request
+        if self.data and "asset__pk" in self.data:
+            assets = AssetFilter(data=self.data).qs
+            queryset = queryset.filter(
+                asset__pk__in=assets.values_list("pk", flat=True)
+            )
+
+        return queryset.distinct()
 
 
 class AssetRequestReGroup:

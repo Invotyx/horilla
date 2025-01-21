@@ -23,6 +23,9 @@ django-mathfilters
 django-model-utils
 django-simple-history
 django-widget-tweaks
+djangorestframework
+djangorestframework-simplejwt
+drf-yasg
 et-xmlfile
 html5lib
 Jinja2
@@ -32,6 +35,7 @@ numpy
 openpyxl
 oscrypto
 pandas
+pdfkit
 pillow
 pycparser
 pyHanko
@@ -47,6 +51,7 @@ pyzk==0.9
 qrcode
 reportlab==4.0.9
 requests
+responses
 setuptools
 six
 sqlparse

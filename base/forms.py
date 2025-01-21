@@ -2183,8 +2183,9 @@ class MultipleApproveConditionForm(ModelForm):
         ("ge", _("Greater Than or Equal To (>=)")),
         ("icontains", _("Contains")),
     ]
-    multi_approval_manager = forms.ModelChoiceField(
-        queryset=Employee.objects.all(),
+
+    multi_approval_manager = forms.ChoiceField(
+        choices=[],
         widget=forms.Select(attrs={"class": "oh-select oh-select-2 mb-2"}),
         label=_("Approval Manager"),
         required=True,
@@ -2207,6 +2208,13 @@ class MultipleApproveConditionForm(ModelForm):
         exclude = [
             "is_active",
         ]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        choices = [("reporting_manager_id", _("Reporting Manager"))] + [
+            (employee.pk, str(employee)) for employee in Employee.objects.all()
+        ]
+        self.fields["multi_approval_manager"].choices = choices
 
 
 class DynamicPaginationForm(ModelForm):
@@ -2623,6 +2631,15 @@ class CompanyLeaveForm(ModelForm):
         model = CompanyLeaves
         fields = "__all__"
         exclude = ["is_active"]
+
+    def __init__(self, *args, **kwargs):
+        """
+        Custom initialization to configure the 'based_on' field.
+        """
+        super().__init__(*args, **kwargs)
+        self.fields["based_on_week"].widget.option_template_name = (
+            "horilla_widgets/select_option.html"
+        )
 
 
 class PenaltyAccountForm(ModelForm):

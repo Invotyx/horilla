@@ -4,6 +4,7 @@ from django.utils.translation import gettext_lazy as _
 
 from base import announcement, request_and_approve, views
 from base.forms import (
+    HolidayForm,
     MailTemplateForm,
     RotatingShiftAssignForm,
     RotatingShiftForm,
@@ -18,6 +19,7 @@ from base.models import (
     EmployeeShift,
     EmployeeShiftSchedule,
     EmployeeType,
+    Holidays,
     HorillaMailTemplate,
     JobPosition,
     JobRole,
@@ -198,7 +200,7 @@ urlpatterns = [
         kwargs={"model": Company},
     ),
     path(
-        "company-delete/<int:obj_id>/",
+        "settings/company-delete/<int:obj_id>/",
         views.object_delete,
         name="company-delete",
         kwargs={"model": Company, "redirect": "/settings/company-view"},
@@ -219,7 +221,10 @@ urlpatterns = [
         "department-delete/<int:obj_id>/",
         views.object_delete,
         name="department-delete",
-        kwargs={"model": Department, "redirect": "/settings/department-view"},
+        kwargs={
+            "model": Department,
+            "HttpResponse": True,
+        },
     ),
     path(
         "settings/job-position-creation/",
@@ -241,7 +246,10 @@ urlpatterns = [
         "job-position-delete/<int:obj_id>/",
         views.object_delete,
         name="job-position-delete",
-        kwargs={"model": JobPosition, "redirect": "/settings/job-position-view"},
+        kwargs={
+            "model": JobPosition,
+            "HttpResponse": True,
+        },
     ),
     path("settings/job-role-create/", views.job_role_create, name="job-role-create"),
     path("settings/job-role-view/", views.job_role_view, name="job-role-view"),
@@ -255,7 +263,10 @@ urlpatterns = [
         "job-role-delete/<int:obj_id>/",
         views.object_delete,
         name="job-role-delete",
-        kwargs={"model": JobRole, "redirect": "/settings/job-role-view"},
+        kwargs={
+            "model": JobRole,
+            "HttpResponse": True,
+        },
     ),
     path("settings/work-type-view/", views.work_type_view, name="work-type-view"),
     path("settings/work-type-create/", views.work_type_create, name="work-type-create"),
@@ -269,7 +280,10 @@ urlpatterns = [
         "work-type-delete/<int:obj_id>/",
         views.object_delete,
         name="work-type-delete",
-        kwargs={"model": WorkType, "redirect": "/settings/work-type-view"},
+        kwargs={
+            "model": WorkType,
+            "HttpResponse": True,
+        },
     ),
     path(
         "add-remove-work-type-fields",
@@ -305,7 +319,7 @@ urlpatterns = [
         name="rotating-work-type-delete",
         kwargs={
             "model": RotatingWorkType,
-            "redirect": "/settings/rotating-work-type-view",
+            "HttpResponse": True,
         },
     ),
     path(
@@ -385,7 +399,7 @@ urlpatterns = [
         name="employee-type-delete",
         kwargs={
             "model": EmployeeType,
-            "redirect": "/settings/employee-type-view",
+            "HttpResponse": True,
         },
     ),
     path(
@@ -410,7 +424,7 @@ urlpatterns = [
         name="employee-shift-delete",
         kwargs={
             "model": EmployeeShift,
-            "redirect": "/settings/employee-shift-view",
+            "HttpResponse": True,
         },
     ),
     path(
@@ -435,7 +449,7 @@ urlpatterns = [
         name="employee-shift-schedule-delete",
         kwargs={
             "model": EmployeeShiftSchedule,
-            "redirect": "/settings/employee-shift-schedule-view",
+            "HttpResponse": True,
         },
     ),
     path(
@@ -587,7 +601,7 @@ urlpatterns = [
         name="work-type-request-delete",
     ),
     path(
-        "work-type-request-single-view/<int:work_type_request_id>/",
+        "work-type-request-single-view/<int:obj_id>/",
         views.work_type_request_single_view,
         name="work-type-request-single-view",
     ),
@@ -731,6 +745,11 @@ urlpatterns = [
         name="enable-account-block-unblock",
     ),
     path(
+        "enable-profile-edit-feature",
+        views.enable_profile_edit_feature,
+        name="enable-profile-edit-feature",
+    ),
+    path(
         "rwork-individual-view/<int:instance_id>/",
         views.rotating_work_individual_view,
         name="rwork-individual-view",
@@ -778,7 +797,10 @@ urlpatterns = [
         "tag-delete/<int:obj_id>",
         views.object_delete,
         name="tag-delete",
-        kwargs={"model": Tags, "redirect": "/settings/tag-view/"},
+        kwargs={
+            "model": Tags,
+            "HttpResponse": True,
+        },
     ),
     path("audit-tag-create", views.audit_tag_create, name="audit-tag-create"),
     path(
@@ -788,7 +810,7 @@ urlpatterns = [
         "audit-tag-delete/<int:obj_id>",
         views.object_delete,
         name="audit-tag-delete",
-        kwargs={"model": AuditTag, "redirect": "/settings/tag-view/"},
+        kwargs={"model": AuditTag, "HttpResponse": True},
     ),
     path(
         "configuration/multiple-approval-condition",
@@ -902,7 +924,7 @@ urlpatterns = [
         views.pagination_settings_view,
         name="pagination-settings-view",
     ),
-    path("announcement/", announcement.announcement_view, name="announcement"),
+    path("announcement-list", announcement.announcement_list, name="announcement-list"),
     path(
         "create-announcement",
         announcement.create_announcement,
@@ -934,6 +956,11 @@ urlpatterns = [
         name="announcement-single-view",
     ),
     path(
+        "announcement-single-view/",
+        announcement.announcement_single_view,
+        name="announcement-single-view",
+    ),
+    path(
         "announcement-delete-comment/<int:comment_id>/",
         announcement.delete_announcement_comment,
         name="announcement-delete-comment",
@@ -942,7 +969,11 @@ urlpatterns = [
         "announcement-viewed-by", announcement.viewed_by, name="announcement-viewed-by"
     ),
     path("driver-viewed", views.driver_viewed_status, name="driver-viewed"),
-    path("employee-charts", views.employee_charts, name="employee-charts"),
+    path(
+        "dashboard-components-toggle",
+        views.dashboard_components_toggle,
+        name="dashboard-components-toggle",
+    ),
     path("employee-chart-show", views.employee_chart_show, name="employee-chart-show"),
     path(
         "settings/enable-biometric-attendance/",
@@ -974,9 +1005,24 @@ urlpatterns = [
         "holidays-info-import", views.holidays_info_import, name="holidays-info-import"
     ),
     path("holiday-info-export", views.holiday_info_export, name="holiday-info-export"),
+    path(
+        "get-upcoming-holidays",
+        views.get_upcoming_holidays,
+        name="get-upcoming-holidays",
+    ),
     path("holiday-creation", views.holiday_creation, name="holiday-creation"),
-    path("holiday-update/<int:id>", views.holiday_update, name="holiday-update"),
-    path("holiday-delete/<int:id>", views.holiday_delete, name="holiday-delete"),
+    path("holiday-update/<int:obj_id>", views.holiday_update, name="holiday-update"),
+    path(
+        "duplicate-holiday/<int:obj_id>",
+        views.object_duplicate,
+        name="duplicate-holiday",
+        kwargs={
+            "model": Holidays,
+            "form": HolidayForm,
+            "template": "holiday/holiday_form.html",
+        },
+    ),
+    path("holiday-delete/<int:obj_id>", views.holiday_delete, name="holiday-delete"),
     path(
         "holidays-bulk-delete", views.bulk_holiday_delete, name="holidays-bulk-delete"
     ),

@@ -55,13 +55,8 @@ class DocumentRequest(HorillaModel):
         return self.title
 
 
-@receiver(post_save, sender=DocumentRequest)
-def doc_request_post_save(sender, instance, **kwargs):
-    document_create(instance)
-
-
 @receiver(m2m_changed, sender=DocumentRequest.employee_id.through)
-def your_model_m2m_changed(sender, instance, action, **kwargs):
+def document_request_m2m_changed(sender, instance, action, **kwargs):
     if action == "post_add":
         document_create(instance)
 
@@ -78,9 +73,14 @@ class Document(HorillaModel):
     document = models.FileField(upload_to="employee/documents", null=True)
     status = models.CharField(choices=STATUS, max_length=10, default="requested")
     reject_reason = models.TextField(blank=True, null=True, max_length=255)
-    expiry_date = models.DateField(null=True, blank=True)
-    notify_before = models.IntegerField(default=1, null=True)
-    is_digital_asset = models.BooleanField(default=False)
+    issue_date = models.DateField(null=True, blank=True, verbose_name=_("Issue Date"))
+    expiry_date = models.DateField(null=True, blank=True, verbose_name=_("Expiry Date"))
+    notify_before = models.IntegerField(
+        default=1, null=True, verbose_name=_("Notify Before")
+    )
+    is_digital_asset = models.BooleanField(
+        default=False, verbose_name=_("Is Digital Asset")
+    )
     objects = HorillaCompanyManager(
         related_company_field="employee_id__employee_work_info__company_id"
     )

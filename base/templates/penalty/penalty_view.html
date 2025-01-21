@@ -6,7 +6,7 @@
                 {% if "leave"|app_installed %}
                 <div class="oh-sticky-table__th">{% trans "Leave Type" %}</div>
                 <div class="oh-sticky-table__th" style="width: 110px">{% trans "Minus Days" %}</div>
-                <div class="oh-sticky-table__th">{% trans "Deducted From" %}<span
+                <div class="oh-sticky-table__th">{% trans "Deducted From " %}<span
                         title="{% trans 'Carry Forward Days' %}">{% trans "CFD" %}</span></div>
                 {% endif %}
                 <div class="oh-sticky-table__th">{% trans "Penalty amount" %}</div>
@@ -21,15 +21,9 @@
                 <div class="oh-sticky-table__td">{{ acc.minus_leaves }}</div>
                 <div class="oh-sticky-table__td">{{acc.deduct_from_carry_forward|yes_no}}</div>
                 {% endif %}
-                {% if position == "prefix" %}
-                    <div class="oh-sticky-table__td">
-                        {{currency}} {{ acc.penalty_amount }}
-                    </div>
-                {% else %}
-                    <div class="oh-sticky-table__td">
-                        {{ acc.penalty_amount }} {{currency}}
-                    </div>
-                {% endif %}
+                <div class="oh-sticky-table__td">
+                    {{ acc.penalty_amount|currency_symbol_position }}
+                </div>
                 <div class="oh-sticky-table__td">{{ acc.created_at }}</div>
             </div>
             {% endfor %}

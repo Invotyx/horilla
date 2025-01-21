@@ -15,6 +15,7 @@ from django_filters import DateFilter
 from base.filters import FilterSet
 from base.methods import reload_queryset
 from pms.models import (
+    AnonymousFeedback,
     BonusPointSetting,
     EmployeeBonusPoint,
     EmployeeKeyResult,
@@ -194,7 +195,7 @@ class ObjectiveFilter(CustomFilterSet):
         empty = queryset.model.objects.none()
         for split in values:
             empty = empty | (
-                queryset.filter(objective_id__title=split)
+                queryset.filter(objective_id__title__icontains=split)
                 | queryset.filter(
                     objective_id__managers__employee_first_name__icontains=split
                 )
@@ -235,6 +236,34 @@ class FeedbackFilter(CustomFilterSet):
         super(FeedbackFilter, self).__init__(
             data=data, queryset=queryset, request=request, prefix=prefix
         )
+
+
+class AnonymousFeedbackFilter(django_filters.FilterSet):
+    """
+    Custom filter set for AnonymousFeedback records.
+
+    This filter set allows to filter AnonymousFeedback records based on various criteria.
+    """
+
+    created_at_date_range = DateRangeFilter(field_name="created_at")
+    start_date = django_filters.DateFilter(
+        field_name="created_at",
+        lookup_expr="gte",
+        widget=forms.DateInput(attrs={"type": "date"}),
+    )
+    end_date = django_filters.DateFilter(
+        field_name="created_at",
+        lookup_expr="lte",
+        widget=forms.DateInput(attrs={"type": "date"}),
+    )
+
+    class Meta:
+        """
+        A nested class that specifies the model and fields for the filter.
+        """
+
+        model = AnonymousFeedback
+        fields = "__all__"
 
 
 class KeyResultFilter(CustomFilterSet):
@@ -328,6 +357,7 @@ class EmployeeObjectiveFilter(FilterSet):
                 empty
                 | (queryset.filter(employee_id__employee_first_name__icontains=split))
                 | (queryset.filter(employee_id__employee_last_name__icontains=split))
+                | (queryset.filter(objective__icontains=split))
             )
 
         return empty.distinct()

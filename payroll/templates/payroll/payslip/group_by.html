@@ -1,5 +1,5 @@
 {% load static %}
-{% load i18n %}
+{% load i18n horillafilters %}
 {% if messages %}
 <div class="oh-wrapper">
   {% for message in messages %}
@@ -84,11 +84,11 @@
 									<div class="oh-sticky-table__th">{% trans "Employee" %}</div>
 									<div class="oh-sticky-table__th">{% trans "Start Date" %}</div>
 									<div class="oh-sticky-table__th">{% trans "End Date" %}</div>
-									<div class="oh-sticky-table__th">{% trans "Status" %}</div>
 									<div class="oh-sticky-table__th">{% trans "Batch" %}</div>
 									<div class="oh-sticky-table__th">{% trans "Gross Pay" %}</div>
 									<div class="oh-sticky-table__th">{% trans "Deduction" %}</div>
 									<div class="oh-sticky-table__th">{% trans "Net Pay" %}</div>
+									<div class="oh-sticky-table__th">{% trans "Status" %}</div>
 									<div class="oh-sticky-table__th oh-sticky-table__right">{% trans "Actions" %}</div>
 								</div>
 						  </div>
@@ -129,42 +129,36 @@
                                     <div data-cell-index="2" class="oh-sticky-table__td dateformat_changer">
                                       {{payslip.end_date}}
                                     </div>
-                                    <div data-cell-index="3" class="oh-sticky-table__td" onclick="event.preventDefault();">
-                                      <select name="status" data-instance-id="{{payslip.id}}" hx-trigger="change" hx-post="{% url 'payslip-status-update' payslip.id %}"
-                                              hx-target="#payslips-table" hx-vals='{"view":"table"}'
-                                              style="color: hsl(0,0%,11%); background-color: transparent; border: none; height: 100%; border: 1px solid transparent;">
-                                        {% for opt in payslip.status_choices %}
-                                        <option value="{{opt.0}}"{% if opt.0 == payslip.status %}selected{% endif %}>{{opt.1}}</option>
-                                        {% endfor %}
-                                      </select>
-                                    </div>
                                     <div data-cell-index="4" class="oh-sticky-table__td">
                                       {{payslip.group_name}}
                                     </div>
-                                    {% if position == "prefix" %}
-                                      <div data-cell-index="5" class="oh-sticky-table__td">
-                                        {{currency}} {{payslip.gross_pay|floatformat:2}}
-                                      </div>
-                                      <div data-cell-index="6" class="oh-sticky-table__td">
-                                        {{currency}} {{payslip.deduction|floatformat:2}}
-                                      </div>
-                                      <div data-cell-index="7" class="oh-sticky-table__td">
-                                        {{currency}} {{payslip.net_pay|floatformat:2}}
+                                    <div data-cell-index="5" class="oh-sticky-table__td">
+                                      {{payslip.gross_pay|floatformat:2|currency_symbol_position}}
+                                    </div>
+                                    <div data-cell-index="6" class="oh-sticky-table__td">
+                                      {{payslip.deduction|floatformat:2|currency_symbol_position}}
+                                    </div>
+                                    <div data-cell-index="7" class="oh-sticky-table__td">
+                                      {{payslip.net_pay|floatformat:2|currency_symbol_position}}
+                                    </div>
+                                    {% if perms.payroll.change_payslip %}
+                                      <div data-cell-index="3" class="oh-sticky-table__td" onclick="event.preventDefault();">
+                                        <select name="status" data-instance-id="{{payslip.id}}" hx-trigger="change" hx-post="{% url 'payslip-status-update' payslip.id %}"
+                                                hx-target="#payslips-table" hx-vals='{"view":"table"}'
+                                                style="color: hsl(0,0%,11%); background-color: transparent; border: none; height: 100%; border: 1px solid transparent;">
+                                          {% for opt in payslip.status_choices %}
+                                          <option value="{{opt.0}}"{% if opt.0 == payslip.status %}selected{% endif %}>{{opt.1}}</option>
+                                          {% endfor %}
+                                        </select>
                                       </div>
                                     {% else %}
-                                      <div data-cell-index="5" class="oh-sticky-table__td">
-                                        {{payslip.gross_pay|floatformat:2}} {{currency}}
-                                      </div>
-                                      <div data-cell-index="6" class="oh-sticky-table__td">
-                                        {{payslip.deduction|floatformat:2}} {{currency}}
-                                      </div>
-                                      <div data-cell-index="7" class="oh-sticky-table__td">
-                                        {{payslip.net_pay|floatformat:2}} {{currency}}
+                                      <div data-cell-index="3" class="oh-sticky-table__td">
+                                        {{payslip.get_status_display}}
                                       </div>
                                     {% endif %}
                                     <div class="oh-sticky-table__td oh-sticky-table__right"style="width: 251px !important;">
                                       <div class="oh-btn-group">
-                                        <form action="{% url 'payslip-pdf' payslip.id %}" method='post' class="w-75">
+                                        <form action="{% url 'view-payslip-pdf' payslip.id %}" method='post' class="w-75">
                                           {% csrf_token %}
                                           <button type='submit' title="{% trans 'Download' %}" class="oh-btn oh-btn--light-bkg w-100"> <ion-icon name="download"></ion-icon></button>
                                         </form>

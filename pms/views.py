@@ -7,9 +7,11 @@ responses in pms app.
 
 import datetime
 import json
+import logging
 from itertools import tee
-from urllib.parse import parse_qs
+from urllib.parse import parse_qs, urlencode, urlparse
 
+from dateutil.relativedelta import relativedelta
 from django import forms
 from django.contrib import messages
 from django.contrib.auth.models import User
@@ -23,8 +25,14 @@ from django.template.loader import render_to_string
 from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
 
-from base.methods import closest_numbers, get_key_instances, get_pagination, sortby
-from base.views import paginator_qry
+from base.methods import (
+    closest_numbers,
+    eval_validate,
+    get_key_instances,
+    get_pagination,
+    paginator_qry,
+    sortby,
+)
 from employee.models import Employee, EmployeeWorkInformation
 from horilla.decorators import (
     hx_request_required,
@@ -41,6 +49,7 @@ from notifications.signals import notify
 from pms.filters import (
     ActualKeyResultFilter,
     ActualObjectiveFilter,
+    AnonymousFeedbackFilter,
     EmployeeObjectiveFilter,
     FeedbackFilter,
     KeyResultFilter,
@@ -66,6 +75,7 @@ from pms.forms import (
 )
 from pms.methods import (
     check_permission_feedback_detailed_view,
+    get_anonymous_feedbacks,
     pms_owner_and_manager_can_enter,
 )
 from pms.models import (
@@ -88,6 +98,8 @@ from pms.models import (
     QuestionTemplate,
 )
 
+logger = logging.getLogger(__name__)
+
 
 # objectives
 @login_required
@@ -97,36 +109,13 @@ def objective_list_view(request):
     Returns:
         Objects based on userlevel.
     """
-    user = request.user
-    employee = Employee.objects.filter(employee_user_id=user).first()
-    is_manager = Employee.objects.filter(
-        employee_work_info__reporting_manager_id=employee
-    )
+    employee = request.user.employee_get
     template = "okr/okr_view.html"
     objective_own = EmployeeObjective.objects.filter(
         employee_id=employee, archive=False
     )
     objective_own = objective_own.distinct()
-    if request.user.has_perm("pms.view_employeeobjective"):
-        # objective_own = EmployeeObjective.objects.filter(employee_id=employee)
-        # objective_own = objective_own.distinct()
-        objective_all = EmployeeObjective.objects.filter(archive=False)
-        context = objective_filter_pagination(request, objective_own, objective_all)
-
-    elif is_manager:
-        # if user is a manager
-        employees_ids = [employee.id for employee in is_manager]
-        objective_all = EmployeeObjective.objects.filter(
-            employee_id__in=employees_ids, archive=False
-        )
-        objective_all = objective_all.distinct()
-        context = objective_filter_pagination(request, objective_own, objective_all)
-    else:
-        # for normal user
-        # objective_own = EmployeeObjective.objects.filter(employee_id=employee)
-        # objective_own = objective_own.distinct()
-        objective_all = EmployeeObjective.objects.none()
-        context = objective_filter_pagination(request, objective_own, objective_all)
+    context = objective_filter_pagination(request, objective_own)
     return render(request, template, context)
 
 
@@ -358,7 +347,15 @@ def key_result_create(request):
                 key_result_ids.remove("create_new_key_result")
             key_result_ids.append(str(instance.id))
             mutable_get.setlist("key_result_id", key_result_ids)
-            redirect_url = f"/pms/{dataUrl}{mutable_get.urlencode()}"
+            data = mutable_get.urlencode()
+            redirect_url = f"/pms/{dataUrl}{data}"
+            parsed_url = urlparse(redirect_url)
+            query_params = parse_qs(parsed_url.query)
+            # Remove the 'dataUrl' parameter
+            query_params.pop("dataUrl", None)
+            # Reconstruct the URL without 'dataUrl'
+            new_query_string = urlencode(query_params, doseq=True)
+            redirect_url = f"{parsed_url.path}?{new_query_string}"
         else:
             redirect_url = request.GET.urlencode()
 
@@ -454,8 +451,8 @@ def add_assignees(request, obj_id):
                                 key_result_id=key_result,
                                 progress_type=key_result.progress_type,
                                 target_value=key_result.target_value,
+                                start_date=start_date,
                             )
-                            emp_kr.save()
                 notify.send(
                     request.user.employee_get,
                     recipient=emp.employee_user_id,
@@ -469,11 +466,12 @@ def add_assignees(request, obj_id):
                     ),
                 )
             objective.save()
-            messages.info(
+            messages.success(
                 request,
                 _("Objective %(objective)s Updated") % {"objective": objective},
             )
             return HttpResponse("<script>window.location.reload()</script>")
+
     context = {
         "form": form,
         "objective": objective,
@@ -571,7 +569,7 @@ def assignees_remove(request, obj_id, emp_id):
     return HttpResponse()
 
 
-def objective_filter_pagination(request, objective_own, objective_all):
+def objective_filter_pagination(request, objective_own):
     """
     This view takes two arguments, all_objective,own_objecitve and returns some objects.
     Args:
@@ -583,41 +581,30 @@ def objective_filter_pagination(request, objective_own, objective_all):
     previous_data = request.GET.urlencode()
     initial_data = {"archive": False}  # set initial value of archive filter to False
     field = request.GET.get("field")
-    if request.GET.get("status") != "Closed":
-        objective_own = objective_own
-        objective_all = objective_all
 
     objective_filter_own = ObjectiveFilter(
         request.GET or initial_data, queryset=objective_own
-    )
-    objective_filer_form = objective_filter_own.form
-    objective_filter_own = objective_filter_own.qs.order_by("-id")
-
-    objective_filter_all = ObjectiveFilter(
-        request.GET or initial_data, queryset=objective_all
-    ).qs
+    ).qs.order_by("-id")
 
     employee = request.user.employee_get
     manager = False
 
-    objectives = Objective.objects.filter(Q(managers=employee) | Q(assignees=employee))
-
+    objectives = (
+        Objective.objects.filter(Q(managers=employee) | Q(assignees=employee))
+    ).distinct()
     if request.user.has_perm("pms.view_objective"):
         objectives = Objective.objects.all()
+        manager = True
     elif Objective.objects.filter(managers=employee).exists():
         manager = True
-
     objectives = ActualObjectiveFilter(
         request.GET or initial_data, queryset=objectives
     ).qs
-
     objectives = Paginator(objectives, get_pagination())
     objective_paginator_own = Paginator(objective_filter_own, get_pagination())
-    objective_paginator_all = Paginator(objective_filter_all, get_pagination())
     own_page = request.GET.get("page")
     all_page = request.GET.get("all_page")
     objectives_own = objective_paginator_own.get_page(own_page)
-    objectives_all = objective_paginator_all.get_page(all_page)
     objectives = objectives.get_page(all_page)
 
     now = datetime.datetime.now()
@@ -628,7 +615,6 @@ def objective_filter_pagination(request, objective_own, objective_all):
         "superuser": "true",
         "objectives": objectives,
         "own_objectives": objectives_own,
-        "all_objectives": objectives_all,
         "objective_filer_form": ActualObjectiveFilter().form,
         "pg": previous_data,
         "current_date": now,
@@ -650,38 +636,10 @@ def objective_list_search(request):
     search_val = request.GET.get("search")
     if search_val is None:
         search_val = ""
+    employee = request.user.employee_get
 
-    user = request.user
-    employee = Employee.objects.filter(employee_user_id=user).first()
-    is_manager = Employee.objects.filter(
-        employee_work_info__reporting_manager_id=employee
-    )
-
-    if request.user.has_perm("pms.view_employeeobjective"):
-        # based on permission
-        objective_own = EmployeeObjective.objects.filter(employee_id=employee)
-        objective_own = objective_own.distinct()
-        objective_all = EmployeeObjective.objects.all()
-        context = objective_filter_pagination(request, objective_own, objective_all)
-
-    elif is_manager:
-        # if user is a manager
-        employees_ids = [employee.id for employee in is_manager]
-        objective_own = EmployeeObjective.objects.filter(employee_id=employee).filter(
-            objective__icontains=search_val
-        )
-        objective_all = EmployeeObjective.objects.filter(
-            employee_id__in=employees_ids
-        ).filter(objective__icontains=search_val)
-        context = objective_filter_pagination(request, objective_own, objective_all)
-
-    else:
-        # for normal user
-        objective_own = EmployeeObjective.objects.filter(employee_id=employee).filter(
-            objective__icontains=search_val
-        )
-        objective_all = EmployeeObjective.objects.none()
-        context = objective_filter_pagination(request, objective_own, objective_all)
+    objective_own = EmployeeObjective.objects.filter(employee_id=employee)
+    context = objective_filter_pagination(request, objective_own)
     template = "okr/okr_list.html"
     if request.GET.get("field") != "" and request.GET.get("field") is not None:
         template = "okr/group_by.html"
@@ -768,21 +726,6 @@ def objective_detailed_view(request, obj_id, **kwargs):
     emp_objectives = EmployeeObjective.objects.filter(
         objective_id=objective, archive=False
     )
-
-    # key_results = EmployeeKeyResult.objects.filter(employee_objective_id=objective)
-    # comments = Comment.objects.filter(employee_objective_id=emp_objectives)
-    # key_results_all = objective.obj_id.all()
-    # progress of objective calculation
-    # total_kr = key_results_all.count()
-    # try:
-    #     progress = int(
-    #         sum(key_result.progress_percentage for key_result in key_results_all) / (total_kr)
-    #     )
-    # except (ZeroDivisionError, TypeError):
-    #     progress = 0
-
-    # objective_form = ObjectiveForm(instance=objective)
-    # history = objective_history(emp_obj_id)
     previous_data = request.GET.urlencode()
     data_dict = parse_qs(previous_data)
     now = datetime.datetime.now()
@@ -790,19 +733,13 @@ def objective_detailed_view(request, obj_id, **kwargs):
         "emp_objectives": emp_objectives,
         "pd": previous_data,
         "filter_dict": data_dict,
-        # "employee_key_results": key_results,
         "objective": objective,
-        # "comments": comments,
-        # "historys": history,
-        # "progress": progress,
-        # "objective_form": objective_form,
         "key_result_form": KeyResultForm,
         "objective_key_result_status": EmployeeKeyResult.STATUS_CHOICES,
         "comment_form": ObjectiveCommentForm,
         "current_date": now,
         "emp_obj_form": EmployeeObjectiveFilter(),
     }
-    # return render(request, "okr/objective_detailed_view.html", context)
     return render(request, "okr/okr_detailed_view.html", context)
 
 
@@ -818,38 +755,46 @@ def objective_detailed_view_activity(request, id):
     """
 
     objective = EmployeeObjective.objects.get(id=id)
-    key_result_history = objective_history(id)
-    history = objective.tracking()
-    comments = Comment.objects.filter(employee_objective_id=objective)
-    activity_list = []
-    for hist in history:
-        hist["date"] = hist["pair"][0].history_date
-        activity_list.append(hist)
-    for com in comments:
-        comment = {
-            "type": "comment",
-            "comment": com,
-            "date": com.created_at,
+    if (
+        request.user.employee_get == objective.employee_id
+        or request.user.employee_get in objective.objective_id.managers.all()
+        or request.user.has_perm("pms.view_comment")
+    ):
+        key_result_history = objective_history(id)
+        history = objective.tracking()
+        comments = Comment.objects.filter(employee_objective_id=objective)
+        activity_list = []
+        for hist in history:
+            hist["date"] = hist["pair"][0].history_date
+            activity_list.append(hist)
+        for com in comments:
+            comment = {
+                "type": "comment",
+                "comment": com,
+                "date": com.created_at,
+            }
+            activity_list.append(comment)
+
+        for key in key_result_history:
+            key_result = {
+                "type": "key_result",
+                "key_result": key,
+                "date": key["changed_date"],
+            }
+            activity_list.append(key_result)
+
+        activity_list = sorted(activity_list, key=lambda x: x["date"], reverse=True)
+
+        context = {
+            "objective": objective,
+            "historys": history,
+            "comments": comments,
+            "activity_list": activity_list,
         }
-        activity_list.append(comment)
-
-    for key in key_result_history:
-        key_result = {
-            "type": "key_result",
-            "key_result": key,
-            "date": key["changed_date"],
-        }
-        activity_list.append(key_result)
-
-    activity_list = sorted(activity_list, key=lambda x: x["date"], reverse=True)
-
-    context = {
-        "objective": objective,
-        "historys": history,
-        "comments": comments,
-        "activity_list": activity_list,
-    }
-    return render(request, "okr/objective_detailed_view_activity.html", context)
+        return render(request, "okr/objective_detailed_view_activity.html", context)
+    else:
+        messages.info(request, _("You dont have permission."))
+        return HttpResponse("<script>window.location.reload();</script>")
 
 
 @login_required
@@ -891,11 +836,16 @@ def emp_objective_search(request, obj_id):
     if not request.GET.get("archive") == "true":
         emp_objectives = emp_objectives.filter(archive=False)
     previous_data = request.GET.urlencode()
+    emp_objectives = Paginator(emp_objectives, get_pagination())
+    page = request.GET.get("page")
+    emp_objectives = emp_objectives.get_page(page)
     data_dict = parse_qs(previous_data)
     get_key_instances(EmployeeObjective, data_dict)
     context = {
         "emp_objectives": emp_objectives,
         "filter_dict": data_dict,
+        "pg": previous_data,
+        "objective": objective,
     }
     template = "okr/emp_objective/emp_objective_list.html"
     if request.GET.get("field") != "" and request.GET.get("field") is not None:
@@ -918,10 +868,17 @@ def kr_table_view(request, emp_objective_id):
     """
     emp_objective = EmployeeObjective.objects.get(id=emp_objective_id)
     krs = emp_objective.employee_key_result.all()
+    krs = Paginator(krs, get_pagination())
+    krs_page = request.GET.get("krs_page")
+    krs = krs.get_page(krs_page)
+    previous_data = request.GET.urlencode()
+
     context = {
         "krs": krs,
         "key_result_status": EmployeeKeyResult.STATUS_CHOICES,
         "emp_objective": emp_objective,
+        "pd": previous_data,
+        "today": datetime.datetime.today().date(),
     }
     template = "okr/kr_list.html"
     return render(request, template, context)
@@ -1081,9 +1038,12 @@ def create_employee_objective(request):
         return:
             redirect to form of employee objective
     """
-    form = EmployeeObjectiveCreateForm()
-    if request.GET.get("data"):
-        form = EmployeeObjectiveCreateForm(request.GET)
+    data = request.GET.copy()
+    # Convert QueryDict to a regular dictionary
+    cleaned_data = {
+        key: value if len(value) > 1 else value[0] for key, value in data.lists()
+    }
+    form = EmployeeObjectiveCreateForm(initial=cleaned_data)
     if request.method == "POST":
         form = EmployeeObjectiveCreateForm(request.POST)
         if form.is_valid():
@@ -1107,9 +1067,9 @@ def create_employee_objective(request):
                         key_result_id=kr,
                         progress_type=kr.progress_type,
                         target_value=kr.target_value,
+                        start_date=emp_obj.start_date,
                     )
-                    emp_kr.save()
-            messages.success(request, _("Employee objective Updated successfully"))
+            messages.success(request, _("Employee objective created successfully"))
             return HttpResponse("<script>window.location.reload()</script>")
     context = {"form": form, "k_form": KRForm(), "emp_obj": True}
     return render(
@@ -1119,7 +1079,6 @@ def create_employee_objective(request):
 
 @login_required
 @hx_request_required
-@manager_can_enter(perm="pms.change_employeeobjective")
 def update_employee_objective(request, emp_obj_id):
     """
     This function is used to update the employee objective
@@ -1129,16 +1088,23 @@ def update_employee_objective(request, emp_obj_id):
             redirect to form of employee objective
     """
     emp_objective = EmployeeObjective.objects.get(id=emp_obj_id)
-    form = EmployeeObjectiveForm(instance=emp_objective)
-    if request.method == "POST":
-        form = EmployeeObjectiveForm(request.POST, instance=emp_objective)
-        if form.is_valid():
-            emp_obj = form.save(commit=False)
-            emp_obj.save()
-            messages.success(request, _("Employee objective Updated successfully"))
-            return HttpResponse("<script>window.location.reload()</script>")
-    context = {"form": form, "k_form": KRForm()}
-    return render(request, "okr/emp_objective_form.html", context=context)
+    if (
+        request.user.employee_get == emp_objective.employee_id
+        or request.user.employee_get in emp_objective.objective_id.managers.all()
+    ):
+        form = EmployeeObjectiveForm(instance=emp_objective)
+        if request.method == "POST":
+            form = EmployeeObjectiveForm(request.POST, instance=emp_objective)
+            if form.is_valid():
+                emp_obj = form.save(commit=False)
+                emp_obj.save()
+                messages.success(request, _("Employee objective Updated successfully"))
+                return HttpResponse("<script>window.location.reload()</script>")
+        context = {"form": form, "k_form": KRForm()}
+        return render(request, "okr/emp_objective_form.html", context=context)
+    else:
+        messages.info(request, _("You don't have permission."))
+        return HttpResponse("<script>window.location.reload()</script>")
 
 
 @login_required
@@ -1194,51 +1160,59 @@ def delete_employee_objective(request, emp_obj_id):
 
 
 @login_required
-@manager_can_enter(perm="pms.change_employeeobjective")
-def change_employee_objective_status(request, emp_obj):
+@hx_request_required
+def change_employee_objective_status(request):
     """
     This function is used to change status of the employee objective
         args:
-            emp_obj_id(int) : pimarykey of EmployeeObjective
+            hx-request
         return:
             a message
     """
-    emp_objective = EmployeeObjective.objects.get(id=emp_obj)
-    status = request.POST.get("status")
-    if emp_objective.status != status:
-        emp_objective.status = status
-        emp_objective.save()
-        messages.success(
-            request,
-            _(
-                f"The status of the objective '{emp_objective.objective_id}'\
-                has been changed to {emp_objective.status}."
-            ),
-        )
-        notify.send(
-            request.user.employee_get,
-            recipient=emp_objective.employee_id.employee_user_id,
-            verb=f"The status of the objective '{emp_objective.objective_id}'\
-                has been changed to {emp_objective.status}.",
-            verb_ar=f"تم تغيير حالة الهدف '{emp_objective.objective_id}'\
-                إلى {emp_objective.status}.",
-            verb_de=f"Der Status des Ziels '{emp_objective.objective_id}'\
-                wurde zu {emp_objective.status} geändert.",
-            verb_es=f"El estado del objetivo '{emp_objective.objective_id}'\
-                ha sido cambiado a {emp_objective.status}.",
-            verb_fr=f"Le statut de l'objectif '{emp_objective.objective_id}'\
-                a été changé à {emp_objective.status}.",
-            redirect=reverse(
-                "objective-detailed-view",
-                kwargs={"obj_id": emp_objective.objective_id.id},
-            ),
-        )
-    else:
-        messages.info(
-            request, _("The status of the objective is the same as selected.")
-        )
+    emp_obj = request.GET.get("empObjId")
+    emp_objective = EmployeeObjective.objects.filter(id=emp_obj).first()
+    status = request.GET.get("status")
+    if (
+        request.user.has_perm("pms.change_employeeobjective")
+        or emp_objective.employee_id == request.user.employee_get
+        or request.user.employee_get in emp_objective.objective_id.managers.all()
+    ):
+        if emp_objective.status != status:
+            emp_objective.status = status
+            emp_objective.save()
+            messages.success(
+                request,
+                _(
+                    f"The status of the objective '{emp_objective.objective_id}'\
+                    has been changed to {emp_objective.status}."
+                ),
+            )
+            notify.send(
+                request.user.employee_get,
+                recipient=emp_objective.employee_id.employee_user_id,
+                verb=f"The status of the objective '{emp_objective.objective_id}'\
+                    has been changed to {emp_objective.status}.",
+                verb_ar=f"تم تغيير حالة الهدف '{emp_objective.objective_id}'\
+                    إلى {emp_objective.status}.",
+                verb_de=f"Der Status des Ziels '{emp_objective.objective_id}'\
+                    wurde zu {emp_objective.status} geändert.",
+                verb_es=f"El estado del objetivo '{emp_objective.objective_id}'\
+                    ha sido cambiado a {emp_objective.status}.",
+                verb_fr=f"Le statut de l'objectif '{emp_objective.objective_id}'\
+                    a été changé à {emp_objective.status}.",
+                redirect=reverse(
+                    "objective-detailed-view",
+                    kwargs={"obj_id": emp_objective.objective_id.id},
+                ),
+            )
+        else:
+            messages.info(
+                request, _("The status of the objective is the same as selected.")
+            )
 
-    return redirect(f"/pms/view-employee-objective/{emp_objective.id}/")
+    else:
+        messages.info(request, _("You dont have permission."))
+    return HttpResponse("<script>$('#reloadMessagesButton').click();</script>")
 
 
 @login_required
@@ -1517,43 +1491,43 @@ def feedback_creation(request):
     return render(request, "feedback/feedback_creation.html", context)
 
 
-@login_required
-@manager_can_enter(perm="pms.add_feedback")
-def feedback_creation_ajax(request):
-    """
-    This view is used to create feedback object.
-    Returns:
-        it will return feedback creation html.
-    """
-    # this ajax request is used to get the Key result and manager of the choosen employee
-    is_ajax = request.headers.get("X-Requested-With") == "XMLHttpRequest"
-    if is_ajax:
-        if request.method == "POST":
-            employee_id = request.POST.get("employee_id")
-            key_results = EmployeeKeyResult.objects.filter(
-                employee_objective_id__employee_id=employee_id
-            ).values()
-            employee_work_info = EmployeeWorkInformation.objects.filter(
-                employee_id__id=employee_id
-            ).first()
-            reporting_manager_id = employee_work_info.reporting_manager_id
-            if reporting_manager_id:
-                reporting_manager = {
-                    "id": reporting_manager_id.id or None,
-                    "employee_first_name": reporting_manager_id.employee_first_name
-                    or None,
-                    "employee_last_name": reporting_manager_id.employee_last_name
-                    or None,
-                }
-            else:
-                reporting_manager = None
-            return JsonResponse(
-                {
-                    "key_results": list(key_results),
-                    "reporting_manager": reporting_manager,
-                }
-            )
-        return JsonResponse({"status": "Invalid request"}, status=400)
+# @login_required
+# @manager_can_enter(perm="pms.add_feedback")
+# def feedback_creation_ajax(request):
+#     """
+#     This view is used to create feedback object.
+#     Returns:
+#         it will return feedback creation html.
+#     """
+#     # this ajax request is used to get the Key result and manager of the choosen employee
+#     is_ajax = request.headers.get("X-Requested-With") == "XMLHttpRequest"
+#     if is_ajax:
+#         if request.method == "POST":
+#             employee_id = request.POST.get("employee_id")
+#             key_results = EmployeeKeyResult.objects.filter(
+#                 employee_objective_id__employee_id=employee_id
+#             ).values()
+#             employee_work_info = EmployeeWorkInformation.objects.filter(
+#                 employee_id__id=employee_id
+#             ).first()
+#             reporting_manager_id = employee_work_info.reporting_manager_id
+#             if reporting_manager_id:
+#                 reporting_manager = {
+#                     "id": reporting_manager_id.id or None,
+#                     "employee_first_name": reporting_manager_id.employee_first_name
+#                     or None,
+#                     "employee_last_name": reporting_manager_id.employee_last_name
+#                     or None,
+#                 }
+#             else:
+#                 reporting_manager = None
+#             return JsonResponse(
+#                 {
+#                     "key_results": list(key_results),
+#                     "reporting_manager": reporting_manager,
+#                 }
+#             )
+#         return JsonResponse({"status": "Invalid request"}, status=400)
 
 
 @login_required
@@ -1631,7 +1605,9 @@ def filter_pagination_feedback(
     feedback_filter_all = FeedbackFilter(
         request.GET or initial_data, queryset=all_feedback
     )
-    anonymous_feedback = anonymous_feedback
+    anonymous_feedback = AnonymousFeedbackFilter(
+        request.GET, queryset=anonymous_feedback
+    ).qs
     feedback_paginator_own = Paginator(feedback_filter_own.qs, get_pagination())
     feedback_paginator_requested = Paginator(
         feedback_filter_requested.qs, get_pagination()
@@ -1642,7 +1618,7 @@ def filter_pagination_feedback(
     feedbacks_own = feedback_paginator_own.get_page(page_number)
     feedbacks_requested = feedback_paginator_requested.get_page(page_number)
     feedbacks_all = feedback_paginator_all.get_page(page_number)
-    now = datetime.datetime.now()
+    now = datetime.datetime.today().date()
     data_dict = parse_qs(previous_data)
     get_key_instances(Feedback, data_dict)
     context = {
@@ -1688,43 +1664,28 @@ def feedback_list_search(request):
     requested_feedback = Feedback.objects.filter(pk__in=requested_feedback_ids).filter(
         review_cycle__icontains=feedback
     )
+    all_feedback = Feedback.objects.none()
     if request.user.has_perm("pms.view_feedback"):
-        all_feedback = Feedback.objects.filter(archive=False).filter(
-            review_cycle__icontains=feedback
-        )
+        all_feedback = Feedback.objects.all().filter(review_cycle__icontains=feedback)
     else:
         # feedbacks to review if employee is a manager
-        all_feedback = Feedback.objects.filter(
-            Q(
-                manager_id=employee_id,
-                manager_id__is_active=True,
-                archive=False,
-            )
-        ).filter(review_cycle__icontains=feedback)
-    anonymous_feedback = (
-        AnonymousFeedback.objects.filter(employee_id=employee_id)
-        if not request.user.has_perm("pms.view_feedback")
-        else AnonymousFeedback.objects.all()
-    )
-
-    reporting_manager_to = employee_id.reporting_manager.all()
-    if request.user.has_perm("pms.view_feedback"):
-        context = filter_pagination_feedback(
-            request, self_feedback, requested_feedback, all_feedback, anonymous_feedback
-        )
-    elif reporting_manager_to:
-        employees_id = [i.id for i in reporting_manager_to]
-        all_feedback = Feedback.objects.filter(employee_id__in=employees_id).filter(
+        all_feedback = Feedback.objects.filter(manager_id=employee_id).filter(
             review_cycle__icontains=feedback
         )
-        context = filter_pagination_feedback(
-            request, self_feedback, requested_feedback, all_feedback, anonymous_feedback
+    # Anonymous feedbacks
+    anonymous_feedback = (
+        AnonymousFeedback.objects.filter(
+            anonymous_feedback_id=request.user.id, archive=False
         )
-    else:
-        all_feedback = Feedback.objects.none()
-        context = filter_pagination_feedback(
-            request, self_feedback, requested_feedback, all_feedback, anonymous_feedback
-        )
+        if not request.user.has_perm("pms.view_feedback")
+        else AnonymousFeedback.objects.filter(archive=False)
+    )
+    related_anonymous_feedbacks = get_anonymous_feedbacks(employee_id)
+    anonymous_feedback = (related_anonymous_feedbacks | anonymous_feedback).distinct()
+
+    context = filter_pagination_feedback(
+        request, self_feedback, requested_feedback, all_feedback, anonymous_feedback
+    )
 
     return render(request, "feedback/feedback_list.html", context)
 
@@ -1756,13 +1717,16 @@ def feedback_list_view(request):
         feedback_all = Feedback.objects.filter(manager_id=employee, archive=False)
     # Anonymous feedbacks
     anonymous_feedback = (
-        AnonymousFeedback.objects.filter(employee_id=employee, archive=False)
+        AnonymousFeedback.objects.filter(
+            anonymous_feedback_id=request.user.id, archive=False
+        )
         if not request.user.has_perm("pms.view_feedback")
         else AnonymousFeedback.objects.filter(archive=False)
     )
-    anonymous_feedback = anonymous_feedback | AnonymousFeedback.objects.filter(
-        anonymous_feedback_id=request.user.id, archive=False
-    )
+    related_anonymous_feedbacks = get_anonymous_feedbacks(employee)
+    anonymous_feedback = (
+        related_anonymous_feedbacks.filter(archive=False) | anonymous_feedback
+    ).distinct()
     context = filter_pagination_feedback(
         request, feedback_own, feedback_requested, feedback_all, anonymous_feedback
     )
@@ -1809,7 +1773,7 @@ def feedback_detailed_view(request, id, **kwargs):
         }
         return render(request, "feedback/feedback_detailed_view.html", context)
     else:
-        messages.info(request, "You dont have permission.")
+        messages.info(request, _("You dont have permission."))
         previous_url = request.META.get("HTTP_REFERER", "/")
         script = f'<script>window.location.href = "{previous_url}"</script>'
         key = "HTTP_HX_REQUEST"
@@ -1833,14 +1797,18 @@ def feedback_detailed_view_answer(request, id, emp_id):
     is_have_perm = check_permission_feedback_detailed_view(
         request, feedback, "pms.view_feedback"
     )
+    kr_feedbacks = KeyResultFeedback.objects.filter(
+        feedback_id=feedback, employee_id=employee
+    )
     if is_have_perm:
         answers = Answer.objects.filter(employee_id=employee, feedback_id=feedback)
         context = {
             "answers": answers,
+            "kr_feedbacks": kr_feedbacks,
         }
         return render(request, "feedback/feedback_detailed_view_answer.html", context)
     else:
-        messages.info(request, "You dont have permission.")
+        messages.info(request, _("You dont have permission."))
         previous_url = request.META.get("HTTP_REFERER", "/")
         script = f'<script>window.location.href = "{previous_url}"</script>'
         key = "HTTP_HX_REQUEST"
@@ -2029,19 +1997,21 @@ def feedback_detailed_view_status(request, id):
     answer = Answer.objects.filter(feedback_id=feedback)
     if status == "Not Started" and answer:
         messages.warning(request, _("Feedback is already started"))
-        return render(request, "messages.html")
+        return HttpResponse("<script>$('#reloadMessagesButton').click();</script>")
+
     feedback.status = status
     feedback.save()
     if (feedback.status) == status:
-        messages.info(
+        messages.success(
             request, _("Feedback status updated to  %(status)s") % {"status": _(status)}
         )
-        return render(request, "messages.html")
+        return HttpResponse("<script>$('#reloadMessagesButton').click();</script>")
+
     messages.info(
         request,
         _("Error occurred during status update to %(status)s") % {"status": _(status)},
     )
-    return render(request, "message.html")
+    return HttpResponse("<script>$('#reloadMessagesButton').click();</script>")
 
 
 @login_required
@@ -2056,6 +2026,7 @@ def get_feedback_overview(request, obj_id):
         question_template = feedback.question_template_id
         questions = question_template.question.all()
         feedback_answers = feedback.feedback_answer.all()
+        kr_feedbacks = feedback.feedback_key_result.all()
         feedback_overview = {}
         for question in questions:
             answer_list = []
@@ -2070,6 +2041,15 @@ def get_feedback_overview(request, obj_id):
                         }
                     )
             feedback_overview[question] = answer_list
+        for kr_feedback in kr_feedbacks:
+            answer_list = []
+            answer_list.append(
+                {kr_feedback.employee_id: [kr_feedback.answer, {"type": "6"}]}
+            )
+            feedback_overview[
+                f"Feedback about keyresult: {kr_feedback.key_result_id.key_result_id}"
+            ] = answer_list
+
         return render(
             request,
             "feedback/feedback_overview.html",
@@ -2078,6 +2058,7 @@ def get_feedback_overview(request, obj_id):
 
 
 @login_required
+@manager_can_enter(perm="pms.delete_feedback")
 def feedback_archive(request, id):
     """
     this function is used to archive the feedback for employee
@@ -2107,7 +2088,7 @@ def get_collegues(request):
         employee = Employee.objects.get(id=int(employee_id)) if employee_id else None
 
         if employee:
-            employees_queryset = []
+            employees_queryset = Employee.objects.none()
             reporting_manager = (
                 employee.employee_work_info.reporting_manager_id
                 if employee.employee_work_info
@@ -2122,30 +2103,26 @@ def get_collegues(request):
                     exclude_ids.append(reporting_manager.id)
 
                 # Get employees in the same department as the employee
-                employees_queryset = (
-                    Employee.objects.filter(
-                        is_active=True, employee_work_info__department_id=department
-                    )
-                    .exclude(id__in=exclude_ids)
-                    .values_list("id", "employee_first_name")
-                )
+                employees_queryset = Employee.objects.filter(
+                    is_active=True, employee_work_info__department_id=department
+                ).exclude(id__in=exclude_ids)
             elif request.GET.get("data") == "manager":
                 if reporting_manager:
                     employees_queryset = Employee.objects.filter(
                         id=reporting_manager.id
-                    ).values_list("id", "employee_first_name")
+                    )
             elif request.GET.get("data") == "subordinates":
                 employees_queryset = Employee.objects.filter(
                     is_active=True, employee_work_info__reporting_manager_id=employee
-                ).values_list("id", "employee_first_name")
+                )
             elif request.GET.get("data") == "keyresults":
                 employees_queryset = EmployeeKeyResult.objects.filter(
                     employee_objective_id__employee_id=employee
                 ).values_list("id", "key_result_id__title")
             # Convert QuerySets to a list
-            employees = list(employees_queryset)
+            employees = [(employee.id, employee) for employee in employees_queryset]
             context = {"employees": employees}
-            employee_html = render_to_string("feedback/employees_select.html", context)
+            employee_html = render_to_string("employee/employees_select.html", context)
             return HttpResponse(employee_html)
         else:
             return JsonResponse({"error": "Employee not found"}, status=404)
@@ -2666,7 +2643,7 @@ def dashboard_objective_status(request):
     is_ajax = request.headers.get("X-Requested-With") == "XMLHttpRequest"
     if is_ajax and request.method == "GET":
         objective_status = EmployeeObjective.STATUS_CHOICES
-        data = {"message": _("No data Found...")}
+        data = {"message": _("No records available at the moment.")}
         for status in objective_status:
             objectives = EmployeeObjective.objects.filter(
                 status=status[0], archive=False
@@ -2686,7 +2663,7 @@ def dashboard_key_result_status(request):
     is_ajax = request.headers.get("X-Requested-With") == "XMLHttpRequest"
     if is_ajax and request.method == "GET":
         key_result_status = EmployeeKeyResult.STATUS_CHOICES
-        data = {"message": _("No data Found...")}
+        data = {"message": _("No records available at the moment.")}
         for i in key_result_status:
             key_results = EmployeeKeyResult.objects.filter(status=i[0])
             key_results_count = filtersubordinates(
@@ -2707,7 +2684,7 @@ def dashboard_feedback_status(request):
     is_ajax = request.headers.get("X-Requested-With") == "XMLHttpRequest"
     if is_ajax and request.method == "GET":
         feedback_status = Feedback.STATUS_CHOICES
-        data = {"message": _("No data Found...")}
+        data = {"message": _("No records available at the moment.")}
         for i in feedback_status:
             feedbacks = Feedback.objects.filter(status=i[0])
             feedback_count = filtersubordinates(
@@ -3034,17 +3011,24 @@ def edit_anonymous_feedback(request, obj_id):
         Renders the 'anonymous/anonymous_feedback_form.html' template with the feedback form pre-filled with existing data.
     """
     feedback = AnonymousFeedback.objects.get(id=obj_id)
-    form = AnonymousFeedbackForm(instance=feedback)
-    anonymous_id = request.user.id
-    if request.method == "POST":
-        form = AnonymousFeedbackForm(request.POST, instance=feedback)
-        if form.is_valid():
-            feedback = form.save(commit=False)
-            feedback.anonymous_feedback_id = anonymous_id
-            feedback.save()
-            return HttpResponse("<script>window.location.reload();</script>")
-    context = {"form": form, "create": False}
-    return render(request, "anonymous/anonymous_feedback_form.html", context)
+    # checking feedback owner
+    if str(request.user.id) == feedback.anonymous_feedback_id or request.user.has_perm(
+        "pms.change_anonymousfeedback"
+    ):
+        form = AnonymousFeedbackForm(instance=feedback)
+        anonymous_id = request.user.id
+        if request.method == "POST":
+            form = AnonymousFeedbackForm(request.POST, instance=feedback)
+            if form.is_valid():
+                feedback = form.save(commit=False)
+                feedback.anonymous_feedback_id = anonymous_id
+                feedback.save()
+                return HttpResponse("<script>window.location.reload();</script>")
+        context = {"form": form, "create": False}
+        return render(request, "anonymous/anonymous_feedback_form.html", context)
+    else:
+        messages.info(request, _("You are don't have permissions."))
+        return HttpResponse("<script>window.location.reload()</script>")
 
 
 @login_required
@@ -3056,14 +3040,21 @@ def archive_anonymous_feedback(request, obj_id):
     """
 
     feedback = AnonymousFeedback.objects.get(id=obj_id)
-    if feedback.archive:
-        feedback.archive = False
-        feedback.save()
-        messages.info(request, _("Feedback un-archived successfully!."))
-    elif not feedback.archive:
-        feedback.archive = True
-        feedback.save()
-        messages.info(request, _("Feedback archived successfully!."))
+    # checking feedback owner
+    if str(request.user.id) == feedback.anonymous_feedback_id or request.user.has_perm(
+        "pms.anonymousfeedback"
+    ):
+        if feedback.archive:
+            feedback.archive = False
+            feedback.save()
+            messages.info(request, _("Feedback un-archived successfully!."))
+        elif not feedback.archive:
+            feedback.archive = True
+            feedback.save()
+            messages.info(request, _("Feedback archived successfully!."))
+
+    else:
+        messages.info(request, _("You are don't have permissions."))
     return redirect(feedback_list_view)
 
 
@@ -3118,7 +3109,6 @@ def view_single_anonymous_feedback(request, obj_id):
 
 @login_required
 @hx_request_required
-@manager_can_enter(perm="pms.add_employeekeyresult")
 def employee_keyresult_creation(request, emp_obj_id):
     """
     This view is for employee keyresult creation , and returns a employee keyresult form.
@@ -3129,43 +3119,54 @@ def employee_keyresult_creation(request, emp_obj_id):
             employee keyresult created, and returnes to employee objective details view
     """
     emp_objective = EmployeeObjective.objects.get(id=emp_obj_id)
-    employee = emp_objective.employee_id
-    emp_key_result = EmployeeKeyResultForm(
-        initial={"employee_objective_id": emp_objective}
-    )
-    if request.method == "POST":
-        emp_key_result = EmployeeKeyResultForm(request.POST)
-        if emp_key_result.is_valid():
-            emp_key_result.save()
-            emp_objective.update_objective_progress()
-            key_result = emp_key_result.cleaned_data["key_result_id"]
+    if (
+        request.user.employee_get in emp_objective.objective_id.managers.all()
+        or request.user.has_perm("pms.add_employeekeyresult")
+    ):
+        employee = emp_objective.employee_id
+        data = request.GET.copy()
+        # Convert QueryDict to a regular dictionary
+        cleaned_data = {
+            key: value if len(value) > 1 else value[0] for key, value in data.lists()
+        }
+        if not cleaned_data.get("employee_objective_id"):
+            cleaned_data["employee_objective_id"] = emp_obj_id
+        emp_key_result = EmployeeKeyResultForm(initial=cleaned_data)
+        if request.method == "POST":
+            emp_key_result = EmployeeKeyResultForm(request.POST)
+            if emp_key_result.is_valid():
+                emp_key_result.save()
+                emp_objective.update_objective_progress()
+                key_result = emp_key_result.cleaned_data["key_result_id"]
 
-            emp_objective.key_result_id.add(key_result)
-            # assignees = emp_key_result.cleaned_data['assignees']
-            # start_date =emp_key_result.cleaned_data['start_date']
+                emp_objective.key_result_id.add(key_result)
+                # assignees = emp_key_result.cleaned_data['assignees']
+                # start_date =emp_key_result.cleaned_data['start_date']
 
-            messages.success(request, _("Key result assigned sucessfully."))
+                messages.success(request, _("Key result assigned sucessfully."))
 
-            notify.send(
-                request.user.employee_get,
-                recipient=employee.employee_user_id,
-                verb="You got an Key Result!.",
-                verb_ar="لقد حصلت على نتيجة رئيسية!",
-                verb_de="Du hast ein Schlüsselergebnis erreicht!",
-                verb_es="¡Has conseguido un Resultado Clave!",
-                verb_fr="Vous avez obtenu un Résultat Clé!",
-                redirect=reverse(
-                    "objective-detailed-view",
-                    kwargs={"obj_id": emp_objective.objective_id.id},
-                ),
-            )
-            return HttpResponse("<script>window.location.reload()</script>")
-    context = {
-        "form": emp_key_result,
-        "emp_objective": emp_objective,
-        "k_form": KRForm(),
-    }
-    return render(request, "okr/key_result/kr_form.html", context=context)
+                notify.send(
+                    request.user.employee_get,
+                    recipient=employee.employee_user_id,
+                    verb="You got an Key Result!.",
+                    verb_ar="لقد حصلت على نتيجة رئيسية!",
+                    verb_de="Du hast ein Schlüsselergebnis erreicht!",
+                    verb_es="¡Has conseguido un Resultado Clave!",
+                    verb_fr="Vous avez obtenu un Résultat Clé!",
+                    redirect=reverse(
+                        "objective-detailed-view",
+                        kwargs={"obj_id": emp_objective.objective_id.id},
+                    ),
+                )
+                return HttpResponse("<script>window.location.reload()</script>")
+        context = {
+            "form": emp_key_result,
+            "emp_objective": emp_objective,
+        }
+        return render(request, "okr/key_result/kr_form.html", context=context)
+    else:
+        messages.info(request, _("You are don't have permissions."))
+        return HttpResponse("<script>window.location.reload()</script>")
 
 
 @login_required
@@ -3182,18 +3183,21 @@ def employee_keyresult_update(request, kr_id):
     """
     emp_kr = EmployeeKeyResult.objects.get(id=kr_id)
     employee = emp_kr.employee_objective_id.employee_id
-    emp_key_result = EmployeeKeyResultForm(instance=emp_kr)
+    data = request.GET.copy()
+    if len(data) > 1:
+        # Convert QueryDict to a regular dictionary
+        cleaned_data = {
+            key: value if len(value) > 1 else value[0] for key, value in data.lists()
+        }
+        emp_key_result = EmployeeKeyResultForm(initial=cleaned_data, instance=emp_kr)
+    else:
+        emp_key_result = EmployeeKeyResultForm(instance=emp_kr)
     if request.method == "POST":
         emp_key_result = EmployeeKeyResultForm(request.POST, instance=emp_kr)
         if emp_key_result.is_valid():
             emp_key_result.save()
             emp_kr.employee_objective_id.update_objective_progress()
-
-            # assignees = emp_key_result.cleaned_data['assignees']
-            # start_date =emp_key_result.cleaned_data['start_date']
-
             messages.success(request, _("Key result Updated sucessfully."))
-
             notify.send(
                 request.user.employee_get,
                 recipient=employee.employee_user_id,
@@ -3264,8 +3268,8 @@ def key_result_current_value_update(request):
     This method is used to update keyresult current value
     """
     try:
-        current_value = eval(request.POST.get("current_value"))
-        emp_kr_id = eval(request.POST.get("emp_key_result_id"))
+        current_value = eval_validate(request.POST.get("current_value"))
+        emp_kr_id = eval_validate(request.POST.get("emp_key_result_id"))
         emp_kr = EmployeeKeyResult.objects.get(id=emp_kr_id)
         if current_value <= emp_kr.target_value:
             emp_kr.current_value = current_value
@@ -3274,6 +3278,39 @@ def key_result_current_value_update(request):
             return JsonResponse({"type": "sucess"})
     except:
         return JsonResponse({"type": "error"})
+
+
+@login_required
+def get_keyresult_data(request):
+    """
+    Function to get the data of keyresult and return to the form.
+    """
+    key_id = (
+        request.GET.get("key_result_id") if request.GET.get("key_result_id") else None
+    )
+    key_result = KeyResult.objects.filter(id=key_id).first()
+    if key_result:
+        if request.GET.get("data-update") == "target_value":
+            return HttpResponse(
+                f'<input type="number" name="target_value" value="{key_result.target_value}" class="oh-input w-100 form-control test test" placeholder="Target Value" id="id_target_value">'
+            )
+        if request.GET.get("data-update") == "end_date":
+            start_date = datetime.datetime.strptime(
+                request.GET.get("start_date"), "%Y-%m-%d"
+            )
+            end_date = (start_date + relativedelta(days=key_result.duration)).date()
+            return HttpResponse(
+                f'<input type="date" name="end_date" value="{end_date}" class="oh-input w-100 form-control" placeholder="End Date" id="id_end_date">'
+            )
+    else:
+        if request.GET.get("data-update") == "target_value":
+            return HttpResponse(
+                f'<input type="number" name="target_value" value="" class="oh-input w-100 form-control test test" placeholder="Target Value" id="id_target_value">'
+            )
+        if request.GET.get("data-update") == "end_date":
+            return HttpResponse(
+                f'<input type="date" name="end_date" value="" class="oh-input w-100 form-control" placeholder="End Date" id="id_end_date">'
+            )
 
 
 @login_required
@@ -3319,7 +3356,7 @@ def create_meetings(request):
         Post:
             it will redirect to view_meetings.html .
     """
-    instance_id = eval(str(request.GET.get("instance_id")))
+    instance_id = eval_validate(str(request.GET.get("instance_id")))
     instance = None
     initial = {"manager": request.user.employee_get, "employee_id": None}
     if instance_id and isinstance(instance_id, int):
@@ -3391,7 +3428,6 @@ def create_meetings(request):
                 pass
 
             messages.success(request, _("Meeting added successfully"))
-            return HttpResponse("<script>window.location.reload()</script>")
     return render(
         request,
         "meetings/form.html",
@@ -3401,9 +3437,12 @@ def create_meetings(request):
     )
 
 
+from django.db.models import F
+
+
 @login_required
 @permission_required("pms.change_meetings")
-def archive_meetings(request, id):
+def archive_meetings(request, obj_id):
     """
     This view is used to archive and unarchive the meeting ,
     Args:
@@ -3412,11 +3451,16 @@ def archive_meetings(request, id):
     Returns:
         it will redirect to view_meetings.html .
     """
-    meeting = Meetings.objects.filter(id=id).first()
+    meeting = Meetings.find(obj_id)
     meeting.is_active = not meeting.is_active
     meeting.save()
-
-    return HttpResponseRedirect(request.META.get("HTTP_REFERER", "/"))
+    message = (
+        _("Meeting unarchived successfully")
+        if meeting.is_active
+        else _("Meeting archived successfully")
+    )
+    messages.success(request, message)
+    return HttpResponse("")
 
 
 @login_required
@@ -3433,6 +3477,9 @@ def meeting_manager_remove(request, meet_id, manager_id):
     meeting = Meetings.objects.filter(id=meet_id).first()
     meeting.manager.remove(manager_id)
     meeting.save()
+    messages.success(
+        request, _("Manager has been successfully removed from the meeting.")
+    )
     return HttpResponse("")
 
 
@@ -3449,6 +3496,9 @@ def meeting_employee_remove(request, meet_id, employee_id):
     meeting = Meetings.objects.filter(id=meet_id).first()
     meeting.employee_id.remove(employee_id)
     meeting.save()
+    messages.success(
+        request, _("Employee has been successfully removed from the meeting.")
+    )
     return HttpResponse("")
 
 
@@ -3468,6 +3518,11 @@ def filter_meetings(request):
         filter_obj = filter_obj.filter(
             Q(employee_id=employee_id) | Q(manager=employee_id)
         ).distinct()
+    if (
+        request.GET.get("is_active") is None
+        or request.GET.get("is_active") == "unknown"
+    ):
+        filter_obj = filter_obj.filter(is_active=True)
     filter_obj = filter_obj.order_by("-id")
 
     filter_obj = sortby(request, filter_obj, "sortby")
@@ -3491,7 +3546,7 @@ def filter_meetings(request):
 
 @login_required
 @meeting_manager_can_enter("pms.change_meetings")
-def add_response(request, id):
+def add_response(request, obj_id):
     """
     This view is used to add the MoM to the meeting ,
     Args:
@@ -3499,12 +3554,15 @@ def add_response(request, id):
     Returns:
         it will redirect to view_meetings.html .
     """
-    meeting = Meetings.objects.filter(id=id).first()
+    meeting = Meetings.find(obj_id)
     if request.method == "POST":
         response = request.POST.get("response")
         meeting.response = response
         meeting.save()
-    return HttpResponseRedirect(request.META.get("HTTP_REFERER", "/"))
+        messages.success(
+            request, _("Minutes of Meeting (MoM) have been created successfully")
+        )
+    return render(request, "meetings/mom_form.html", {"meeting": meeting})
 
 
 @login_required
@@ -3665,6 +3723,8 @@ def performance_tab(request, emp_id):
 
 @login_required
 def dashboard_feedback_answer(request):
+    previous_data = request.GET.urlencode()
+    page_number = request.GET.get("page")
     employee = request.user.employee_get
     feedback_requested = Feedback.objects.filter(
         Q(manager_id=employee, manager_id__is_active=True)
@@ -3672,11 +3732,15 @@ def dashboard_feedback_answer(request):
         | Q(subordinate_id=employee, subordinate_id__is_active=True)
     ).distinct()
     feedbacks = feedback_requested.exclude(feedback_answer__employee_id=employee)
-
+    feedbacks = paginator_qry(feedbacks, page_number)
     return render(
         request,
         "request_and_approve/feedback_answer.html",
-        {"feedbacks": feedbacks, "current_date": datetime.date.today()},
+        {
+            "feedbacks": feedbacks,
+            "pd": previous_data,
+            "current_date": datetime.date.today(),
+        },
     )
 
 
@@ -3690,7 +3754,7 @@ def delete_bonus_point_setting(request, pk):
         BonusPointSetting.objects.get(id=pk).delete()
         messages.success(request, "Bonus Point Setting deleted")
     except Exception as e:
-        print(e)
+        logger(e)
         messages.error(request, "Something went wrong")
     return redirect(reverse("bonus-point-setting-list-view"))
 
@@ -3706,7 +3770,7 @@ def delete_employee_bonus_point(request, pk):
         bonus.delete()
         messages.success(request, _(f"{bonus} deleted"))
     except Exception as e:
-        print(e)
+        logger(e)
         messages.error(request, _("Something went wrong"))
     return redirect(reverse("employee-bonus-point-list-view"))
 

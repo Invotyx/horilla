@@ -61,6 +61,7 @@ APPS = [
     "offboarding",
     "horilla_documents",
     "helpdesk",
+    "project"
 ]
 
 NO_PERMISSION_MODALS = [

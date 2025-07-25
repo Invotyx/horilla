@@ -5,7 +5,7 @@ CBV of projects page
 from typing import Any
 
 from django.contrib import messages
-from django.db.models import Q
+from django.db.models import Q, Count
 from django.http import HttpResponse
 from django.urls import reverse
 from django.utils.decorators import method_decorator
@@ -158,13 +158,20 @@ class ProjectsList(HorillaListView):
     filter_class = ProjectFilter
 
     def get_queryset(self):
-        queryset = super().get_queryset()
+        queryset = (
+            super()
+            .get_queryset()
+            .prefetch_related("managers", "members", "task_set")
+            .annotate(task_count=Count("task"))
+        )
         if not self.request.user.has_perm("project.view_project"):
             employee = self.request.user.employee_get
             task_filter = queryset.filter(
                 Q(task__task_members=employee) | Q(task__task_managers=employee)
             )
-            project_filter = queryset.filter(Q(managers=employee) | Q(members=employee))
+            project_filter = queryset.filter(
+                Q(managers=employee) | Q(members=employee)
+            )
             queryset = task_filter | project_filter
         return queryset.distinct()
 
@@ -335,13 +342,20 @@ class ProjectCardView(HorillaCardView):
     filter_class = ProjectFilter
 
     def get_queryset(self):
-        queryset = super().get_queryset()
+        queryset = (
+            super()
+            .get_queryset()
+            .prefetch_related("managers", "members", "task_set")
+            .annotate(task_count=Count("task"))
+        )
         if not self.request.user.has_perm("project.view_project"):
             employee = self.request.user.employee_get
             task_filter = queryset.filter(
                 Q(task__task_members=employee) | Q(task__task_managers=employee)
             )
-            project_filter = queryset.filter(Q(managers=employee) | Q(members=employee))
+            project_filter = queryset.filter(
+                Q(managers=employee) | Q(members=employee)
+            )
             queryset = task_filter | project_filter
         return queryset.distinct()
 

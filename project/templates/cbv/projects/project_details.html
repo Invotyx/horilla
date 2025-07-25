@@ -55,7 +55,8 @@
           <span class="helpdesk__card-value" name="" id="">
             <div class="d-flex justify-content-between custom-scroll">
               <div class="avatars" id="avatarsContainer">
-                {% for manager in project.managers.all %}
+                {% with project.managers.all as managers %}
+                {% for manager in managers %}
                 <a
                   href="{% url 'employee-view-individual' manager.id %}"
                   class="avatars__item"
@@ -63,6 +64,7 @@
                   ><img class="avatar" src="{{manager.get_avatar}}" alt=""
                 /></a>
                 {% endfor %}
+                {% endwith %}
               </div>
             </div>
           </span>
@@ -72,7 +74,8 @@
           <span class="helpdesk__card-value" name="" id="">
             <div class="d-flex justify-content-between custom-scroll">
               <div class="avatars" id="avatarsContainer">
-                {% for menber in project.members.all %}
+                {% with project.members.all as members %}
+                {% for menber in members %}
                 <a
                   href="{% url 'employee-view-individual' menber.id %}"
                   class="avatars__item"
@@ -80,6 +83,7 @@
                   ><img class="avatar" src="{{menber.get_avatar}}" alt=""
                 /></a>
                 {% endfor %}
+                {% endwith %}
               </div>
             </div>
           </span>

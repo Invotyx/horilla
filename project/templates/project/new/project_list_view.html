@@ -98,8 +98,10 @@
 
             <div class="oh-sticky-table__td">{{project.manager}}</div>
             <div class="oh-sticky-table__td">
-              {% for employee in project.members.all %} {{employee}}<br />
+              {% with project.members.all as members %}
+              {% for employee in members %} {{employee}}<br />
               {% endfor %}
+              {% endwith %}
             </div>
             <div class="oh-sticky-table__td">{{project.get_status_display}}</div>
             <div class="oh-sticky-table__td">{{project.start_date}}</div>

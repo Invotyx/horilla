@@ -950,7 +950,7 @@ def task_filter(request, project_id):
         # .distinct()
         # .order_by("sequence")
     )
-    previous_data = request.environ["QUERY_STRING"]
+    previous_data = request.META.get("QUERY_STRING", "")
     data_dict = parse_qs(previous_data)
     get_key_instances(Task, data_dict)
     if data_dict.get("project"):
@@ -1817,14 +1817,10 @@ def personal_time_sheet(request):
     year = request.GET["year"]
     week_number = request.GET["week"]
 
-    time_spent = []
     dataset = []
 
     projects = Project.objects.filter(project_timesheet__employee_id=emp_id).distinct()
 
-    time_sheets = TimeSheet.objects.filter(employee_id=emp_id).order_by("date")
-
-    time_sheets = time_sheets.filter(date__week=week_number)
 
     # check for labels to be genarated weeky or monthly
     if selected == "week":
@@ -1848,6 +1844,12 @@ def personal_time_sheet(request):
             date_list.append(day)
             day = day.strftime("%d-%m-%Y")
             labels.append(day)
+
+    time_sheets = (
+        TimeSheet.objects
+        .filter(employee_id=emp_id, date__in=date_list)
+        .select_related("project_id")
+    )
     colors = generate_colors(len(projects))
 
     for project, color in zip(projects, colors):
@@ -1863,11 +1865,9 @@ def personal_time_sheet(request):
     total_hours_by_project_and_date = defaultdict(lambda: defaultdict(float))
 
     # addding values to the response
-    for label in date_list:
-        time_sheets = TimeSheet.objects.filter(employee_id=emp_id, date=label)
-        for time in time_sheets:
-            time_spent = strtime_seconds(time.time_spent) / 3600
-            total_hours_by_project_and_date[time.project_id.title][label] += time_spent
+    for time in time_sheets:
+        time_spent = strtime_seconds(time.time_spent) / 3600
+        total_hours_by_project_and_date[time.project_id.title][time.date] += time_spent
     for data in dataset:
         project_title = data["label"]
         data["data"] = [

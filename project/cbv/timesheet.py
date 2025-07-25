@@ -143,7 +143,12 @@ class TimeSheetList(HorillaListView):
                 | Q(project_id__managers=employee)
                 | Q(employee_id=employee)
             ).distinct()
-        return queryset
+
+        return queryset.select_related(
+            "employee_id",
+            "project_id",
+            "task_id",
+        )
 
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
@@ -265,7 +270,11 @@ class TaskTimeSheet(TimeSheetList):
             ):
                 queryset = queryset.filter(employee_id=employee_id)
 
-        return queryset
+        return queryset.select_related(
+            "employee_id",
+            "project_id",
+            "task_id",
+        )
 
 
 @method_decorator(login_required, name="dispatch")
@@ -414,7 +423,11 @@ class TimeSheetCardView(HorillaCardView):
                 | Q(project_id__managers=employee)
                 | Q(employee_id=employee)
             ).distinct()
-        return queryset
+        return queryset.select_related(
+            "employee_id",
+            "project_id",
+            "task_id",
+        )
 
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)

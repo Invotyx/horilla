@@ -184,11 +184,13 @@ class TasksNavBar(HorillaNavView):
         super().__init__(**kwargs)
         employee = self.request.user.employee_get
         projects = Project.objects.all()
-        managers = [
-            manager for project in projects for manager in project.managers.all()
-        ]
+        managers = (
+            Employee.objects.filter(project_managers__in=projects).distinct()
+        )
         self.search_url = reverse("tasks-list-view")
-        if employee in managers or self.request.user.has_perm("project.add_task"):
+        if managers.filter(id=employee.id).exists() or self.request.user.has_perm(
+            "project.add_task"
+        ):
             self.create_attrs = f"""
                                     onclick = "event.stopPropagation();"
                                     data-toggle="oh-modal-toggle"

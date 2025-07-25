@@ -94,8 +94,12 @@ class ProjectDetailView(HorillaDetailedView):
             ]
 
     def get_queryset(self) -> QuerySet[Any]:
-        queryset = super().get_queryset()
-        queryset = queryset.annotate(task_count=Count("task"))
+        queryset = (
+            super()
+            .get_queryset()
+            .prefetch_related("managers", "members", "task_set")
+            .annotate(task_count=Count("task"))
+        )
         return queryset
 
     @cached_property

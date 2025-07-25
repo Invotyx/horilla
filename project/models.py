@@ -178,7 +178,9 @@ class Project(HorillaModel):
         return url
 
     def get_task_badge_html(self):
-        task_count = self.task_set.count()
+        task_count = getattr(self, "task_count", None)
+        if task_count is None:
+            task_count = self.task_set.count()
         title = self.title
         return format_html(
             '<div style="display: flex; align-items: center;">'

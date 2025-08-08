@@ -1260,6 +1260,7 @@ class HorillaNavView(TemplateView):
     empty_inputs: list = []
     view_types: list = []
     create_attrs: str = """"""
+    extra_create_buttons: list = []
     apply_first_filter = True
 
     def __init__(self, **kwargs: Any) -> None:
@@ -1327,6 +1328,7 @@ class HorillaNavView(TemplateView):
         context["filter_body_template"] = self.filter_body_template
         context["view_types"] = self.view_types
         context["create_attrs"] = self.create_attrs
+        context["extra_create_buttons"] = self.extra_create_buttons
         context["search_in"] = self.search_in
         context["apply_first_filter"] = self.apply_first_filter
         context["filter_instance_context_name"] = self.filter_instance

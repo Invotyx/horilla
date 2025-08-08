@@ -216,23 +216,30 @@
     {% endif %}
 
     {% if create_attrs %}
-    <a
-      class="oh-btn oh-btn--secondary ml-2"
-      {{create_attrs|safe}}
-      >
-      <ion-icon
-        name="add-sharp"
-        class="mr-1 md hydrated"
-        role="img"
-        aria-label="add sharp"
-      ></ion-icon
-      >{% trans "Create" %}
-    </a>
-    {% endif %}
+      <a
+        class="oh-btn oh-btn--secondary ml-2"
+        {{create_attrs|safe}}
+        >
+        <ion-icon
+          name="add-sharp"
+          class="mr-1 md hydrated"
+          role="img"
+          aria-label="add sharp"
+        ></ion-icon
+        >{% trans "Create" %}
+      </a>
+      {% endif %}
+      {% if extra_create_buttons %}
+        {% for btn in extra_create_buttons %}
+        <a class="oh-btn oh-btn--secondary ml-2" {{btn.attrs|safe}}>
+          <ion-icon name="{{btn.icon|default:'add-outline'}}" class="mr-1 md hydrated" role="img"></ion-icon>{{btn.label}}
+        </a>
+        {% endfor %}
+      {% endif %}
 
-  </div>
-  <script>
-    var form = $('#filterForm')[0];
+    </div>
+    <script>
+      var form = $('#filterForm')[0];
     var data ={{last_filter|safe}}
     for (const key in data) {
       const field = form.elements[key];

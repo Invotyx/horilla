@@ -121,6 +121,20 @@ class TimeSheetNavView(HorillaNavView):
                                 hx-get="{reverse('create-time-sheet')}"
                                 """
 
+        self.extra_create_buttons = [
+            {
+                "attrs": f"""
+                    onclick = \"event.stopPropagation();\"
+                    data-toggle=\"oh-modal-toggle\"
+                    data-target=\"#genericModal\"
+                    hx-target=\"#genericModalBody\"
+                    hx-get=\"{reverse('create-task-all')}\"
+                """,
+                "icon": "add-outline",
+                "label": _("Create Task"),
+            }
+        ]
+
 
 @method_decorator(login_required, name="dispatch")
 @method_decorator(

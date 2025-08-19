@@ -7,7 +7,7 @@ import datetime
 import logging
 import uuid
 from typing import Any
-
+from django.db.models import Sum
 from django import forms
 from django.apps import apps
 from django.template.loader import render_to_string
@@ -876,14 +876,20 @@ class ReimbursementForm(ModelForm):
 
     def exclude_fields_by_type(self, exclude_fields):
         """Determine which fields to exclude based on type."""
-        type = (
-            self.data.get("type")
-            if self.data
-            else self.instance.type if self.instance else None
-        )
+        type = self.data.get("type") if self.data else None
+        if not type and self.instance:
+            type = self.instance.type
+            
         is_edit = self.instance and self.instance.pk
 
         if type == "reimbursement" and is_edit:
+            exclude_fields += [
+                "leave_type_id",
+                "cfd_to_encash",
+                "ad_to_encash",
+                "bonus_to_encash",
+            ]
+        elif type == "medical_encashment" and (is_edit or self.data):
             exclude_fields += [
                 "leave_type_id",
                 "cfd_to_encash",
@@ -915,13 +921,52 @@ class ReimbursementForm(ModelForm):
     def clean(self):
         cleaned_data = super().clean()
 
-        type_ = cleaned_data.get("type")
-        employee = cleaned_data.get("employee_id")
+        type_ = cleaned_data.get("type") or (
+            self.instance.type if self.instance else None
+        )
+        employee = cleaned_data.get("employee_id") or (
+            self.instance.employee_id if self.instance else None
+        )
+        amount = cleaned_data.get("amount")
 
         if not type_ or not employee:
             return cleaned_data
 
-        if type_ == "bonus_encashment":
+        if type_ == 'medical_encashment':
+            if amount is None:
+                self.add_error("amount", "Amount is required ")
+            else:
+                if amount > 100000:
+                
+                    self.add_error("amount", "Amount cannot exceed PKR 100,000")
+
+                if amount <= 0:
+                    
+                    self.add_error("amount", "Amount cannot be less than or equal to PKR 0")
+
+                approved_claims_total = (
+                    Reimbursement.objects.filter(
+                        employee_id=employee,
+                        type="medical_encashment",
+                        status="approved",
+                    )
+                    .exclude(id=self.instance.pk)  # Exclude current instance in case of edit
+                    .aggregate(total=Sum("amount"))["total"]
+                    or 0
+                )
+
+                if approved_claims_total >= 100000:
+                    self.add_error(
+                        "amount",
+                        "No medical claim can be submitted once PKR 100,000 is fully used.",
+                    )
+                elif (approved_claims_total + amount) > 100000:
+                    self.add_error(
+                        "amount",
+                        f"Total approved medical claims (including this one) cannot exceed PKR 100,000. Currently approved: PKR {approved_claims_total:,}",
+                    )
+                    
+        elif type_ == "bonus_encashment":
             bonus_to_encash = (
                 self.instance.bonus_to_encash
                 if self.instance.pk
@@ -955,7 +1000,7 @@ class ReimbursementForm(ModelForm):
                 if self.instance.pk
                 else cleaned_data.get("ad_to_encash", 0)
             )
-
+        
             if not leave_type:
                 self.add_error("leave_type_id", "This field is required")
             else:

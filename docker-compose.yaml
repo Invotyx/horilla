@@ -1,6 +1,6 @@
 services:
   server:
-    image: ghcr.io/invotyx/horilla:master
+    image: ghcr.io/invotyx/horilla:live
     ports:
       - 8000:8000
     restart: unless-stopped

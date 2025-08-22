@@ -1,0 +1,171 @@
+{% extends 'index.html' %}
+{% load i18n %}
+{% block content %}
+{% load taskfilters %}
+
+<style>
+    .avatars {
+        display: flex;
+        padding: 8px 10px;
+    }
+
+    .avatars__item {
+        background-color: #596376;
+        border: 2px solid white;
+        border-radius: 100%;
+        color: #ffffff;
+        display: block;
+        font-family: sans-serif;
+        font-size: 12px;
+        font-weight: 100;
+        height: 26px;
+        width: 26px;
+        line-height: 17px;
+        text-align: center;
+        transition: margin 0.1s ease-in-out;
+        overflow: hidden;
+        margin-left: -10px;
+    }
+
+    .avatars__item:first-child {
+        z-index: 5;
+    }
+
+    .avatars__item:nth-child(2) {
+        z-index: 4;
+    }
+
+    .avatars__item:nth-child(3) {
+        z-index: 3;
+    }
+
+    .avatars__item:nth-child(4) {
+        z-index: 2;
+    }
+
+    .avatars__item:nth-child(5) {
+        z-index: 1;
+    }
+
+    .avatars__item:last-child {
+        z-index: 0;
+    }
+
+    .avatars__item img {
+        width: 100%;
+    }
+
+    .avatars:hover .avatars__item {
+        margin-right: 10px;
+    }
+</style>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    const startInput = document.getElementById("start");
+    const endInput = document.getElementById("end");
+
+    function updateEndMin() {
+        if (startInput.value) {
+            endInput.min = startInput.value;  // block dates before start
+            if (endInput.value && endInput.value < startInput.value) {
+                endInput.value = startInput.value; // auto-fix invalid selection
+            }
+        }
+    }
+
+    startInput.addEventListener("change", updateEndMin);
+    updateEndMin(); // run once when page loads
+});
+</script>
+
+<div class="oh-wrapper mb-5">
+    {% include "cbv/projects/project_details.html" %}
+
+    <div class= "mt-2 mb-3 border shadow-sm p-3">
+        <form method="get" class="mb-3 d-flex align-items-end gap-2">
+            <h2 class="oh-label mx-2">{% trans "Start Date" %}</h2>
+            <div class="oh-input-group">
+            
+                <input type="date" id="start" name="start" value="{{ start }}" max="{{ today }}" class="oh-input"/>
+            </div>
+            <h5 class="oh-label mx-2">{% trans "Till Date" %}</h5>
+            <div class="oh-input-group">
+                
+                <input type="date" id="end" name="end" value="{{ end }}" max="{{ today }}"  class="oh-input"/>
+            </div>
+            <h5 class="oh-label">{% trans "Select Members" %}</h5>
+            <select name="member" class="oh-select" multiple>
+                <option disabled  hidden>{% trans "Select Members" %}</option>
+                {% for emp in members %}
+                <option value="{{ emp.id }}" {% if emp.id|stringformat:'s' in selected_members %}selected{% endif %}>{{ emp }}</option>
+                {% endfor %}
+            </select>
+            <button type="submit" class="oh-btn oh-btn--small oh-btn--success">{% trans "Filter" %}</button>
+            <button type="submit" name="clear" value="1" class="oh-btn oh-btn--small oh-btn--secondary">{% trans "Clear" %}</button>
+        </form>
+
+        <div class="row mt-5 mb-3 ">
+            <div class="col-md-6 mb-2">
+                <div class="card border shadow-sm p-3 h-100">
+                    <strong>{% trans "Total Hours Logged" %}:</strong> 
+                    <span class="text-primary h5">{{ total_hours }}</span>
+                </div>
+            </div>
+            <div class="col-md-6 mb-2">
+                <div class="card border shadow-sm p-3 h-100">
+                    <strong>{% trans "Total Tasks Created" %}:</strong> 
+                    <span class="text-success h5">{{ total_tasks }}</span>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+        {% comment %} # calculate total timesheet rows for each employee {% endcomment %}
+    
+    {% if grouped_timesheets %}
+    <div class="oh-accordion-meta" id="tsAccordion ">
+        {% for emp, items in grouped_timesheets %}
+        <div class="oh-accordion-meta__item">
+            <div class="oh-accordion-meta__header" onclick="event.stopPropagation();$(this).toggleClass('oh-accordion-meta__header--show').next().toggleClass('d-none')">
+                <span class="oh-accordion-meta__title"><span class="oh-checkpoint-badge oh-checkpoint-badge--secondary me-3">{{ items|length }}</span> {{ emp }} </span>
+            </div>
+            <div class="oh-accordion-meta__body d-none">
+                <div class="oh-sticky-table">
+                    <div class="oh-sticky-table__table">
+                        <div class="oh-sticky-table__thead">
+                            <div class="oh-sticky-table__tr">
+                                <div class="oh-sticky-table__th">{% trans "Task Name" %}</div>
+                                <div class="oh-sticky-table__th">{% trans "Date" %}</div>
+                                <div class="oh-sticky-table__th">{% trans "Hours Spent" %}</div>
+                                <div class="oh-sticky-table__th">{% trans "Status" %}</div>
+                            </div>
+                        </div>
+                        {% for ts in items %}
+                        <div class="oh-sticky-table__tbody">
+                            <div class="oh-sticky-table__tr">
+                                <div class="oh-sticky-table__td">{{ ts.task_name }}</div>
+                                <div class="oh-sticky-table__td">{{ ts.date }}</div>
+                                <div class="oh-sticky-table__td">{{ ts.time_spent }}</div>
+                               <div class="oh-sticky-table__td 
+                                    {% if ts.status == 'In Progress' %}status-inprogress
+                                    {% elif ts.status == 'Completed' %}status-completed
+                                    {% endif %}">
+                                    {{ ts.get_status_display }}
+                                </div>
+
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p>{% trans "No result found for the selected date." %}</p>
+    {% endif %}
+</div>
+{% endblock %}

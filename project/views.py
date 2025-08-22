@@ -3,6 +3,7 @@ import datetime
 import json
 import logging
 from collections import defaultdict
+from datetime import date
 from urllib.parse import parse_qs, urlparse
 
 import pandas as pd
@@ -13,12 +14,16 @@ from django.core.exceptions import ValidationError
 from django.core.paginator import Paginator
 from django.http import Http404, HttpResponse, HttpResponseRedirect, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+
 from django.template.loader import render_to_string
 from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
 
 from base.methods import filtersubordinates, get_key_instances
+from employee.models import Employee
 from horilla.decorators import hx_request_required, login_required, permission_required
+from project.models import TimeSheet
+
 from notifications.signals import notify
 from project.cbv.projects import DynamicProjectCreationFormView
 from project.cbv.tasks import DynamicTaskCreateFormView
@@ -722,27 +727,54 @@ def project_archive(request, project_id):
 @login_required
 @project_update_permission()
 def task_view(request, project_id, **kwargs):
-    """
-    For showing tasks
-    """
-    form = TaskAllFilter()
-    view_type = "card"
+    """Project details with member wise timesheet breakdown."""
     project = Project.objects.get(id=project_id)
-    stages = ProjectStage.objects.filter(project=project).order_by("sequence")
-    tasks = Task.objects.filter(project=project)
-    form.form.fields["stage"].queryset = ProjectStage.objects.filter(project=project.id)
-    if request.GET.get("view") == "list":
-        view_type = "list"
+    members = (project.managers.all() | project.members.all()).distinct()
+    timesheets = TimeSheet.objects.filter(project_id=project).order_by("-date")
+
+    if not request.user.is_superuser:
+        timesheets = timesheets.filter(employee_id=request.user.employee_get)
+        members = members.filter(id=request.user.employee_get.id)
+
+    if request.GET.get("clear"):
+        return redirect(request.path)
+
+    start = request.GET.get("start")
+    end = request.GET.get("end")
+    member_ids = [mid for mid in request.GET.getlist("member") if mid]
+    if start:
+        timesheets = timesheets.filter(date__gte=start)
+    if end:
+        timesheets = timesheets.filter(date__lte=end)
+    if member_ids:
+        timesheets = timesheets.filter(employee_id_id__in=member_ids)
+
+    grouped = defaultdict(list)
+    total_minutes = 0
+    for ts in timesheets:
+        grouped[ts.employee_id].append(ts)
+        try:
+            h, m = map(int, ts.time_spent.split(":"))
+            total_minutes += h * 60 + m
+        except ValueError:
+            pass
+    grouped_timesheets = [(emp, entries) for emp, entries in grouped.items()]
+    total_hours = f"{total_minutes // 60:02d}:{total_minutes % 60:02d}"
+
+    today = date.today().strftime("%Y-%m-%d") 
     context = {
-        "view_type": view_type,
-        "tasks": tasks,
-        "stages": stages,
-        "project_id": project_id,
         "project": project,
-        "today": datetime.datetime.today().date(),
-        "f": form,
+        "grouped_timesheets": grouped_timesheets,
+        "total_hours": total_hours,
+        "total_tasks": timesheets.count(),
+        "members": members,
+        "start": start,
+        "end": end,
+        "selected_members": member_ids,
+        "today": today,
     }
-    return render(request, "task/new/overall.html", context)
+    return render(request, "project/project_timesheet.html", context)
+
 
 
 @login_required
@@ -1498,97 +1530,11 @@ def time_sheet_initial(request):
 #     # if user_employee.id not in [member[1] for member in members]:
 #     #     members.append((user_employee.first_name, user_employee.id))
 
+
 #     return JsonResponse({'data': list(members)})
 
 
-def get_members(request):
-    project_id = request.GET.get("project_id")
-    task_id = request.GET.get("task_id")
-    form = TimeSheetForm()
-    if project_id and task_id:
-        if task_id != "dynamic_create" and project_id != "dynamic_create":
-            project = Project.objects.filter(id=project_id).first()
-            task = Task.objects.filter(id=task_id).first()
-            employee = Employee.objects.filter(id=request.user.employee_get.id)
-            if employee.first() in project.managers.all():
-                members = (
-                    employee
-                    | project.members.all()
-                    | task.task_managers.all()
-                    | task.task_members.all()
-                ).distinct()
-            elif employee.first() in task.task_managers.all():
-                members = (employee | task.task_members.all()).distinct()
-            else:
-                members = employee
-            form.fields["employee_id"].queryset = members
-    else:
-        form.fields["employee_id"].queryset = Employee.objects.none()
 
-    employee_field_html = render_to_string(
-        "cbv/timesheet/employee_field.html",
-        {
-            "form": form,
-            "field_name": "employee_id",
-            "field": form.fields["employee_id"],
-            "task_id": task_id,
-            "project_id": project_id,
-        },
-    )
-    return HttpResponse(employee_field_html)
-
-
-def get_tasks_in_timesheet(request):
-    project_id = request.GET.get("project_id")
-    form = TimeSheetForm()
-    if project_id and project_id != "dynamic_create":
-        project = Project.objects.get(id=project_id)
-        employee = request.user.employee_get
-        all_tasks = Task.objects.filter(project=project)
-        # ie the employee is a project manager return all tasks
-        if (
-            employee in project.managers.all()
-            or employee in project.members.all()
-            or request.user.has_perm("project.add_timesheet")
-        ):
-            tasks = all_tasks
-        # if the employee is a task manager and task member
-        elif (
-            Task.objects.filter(project=project_id, task_managers=employee).exists()
-            and Task.objects.filter(project=project_id, task_members=employee).exists()
-        ):
-            tasks = (
-                Task.objects.filter(project=project_id, task_managers=employee)
-                | Task.objects.filter(project=project_id, task_members=employee)
-            ).distinct()
-        # if the employee is manager of a task under the project
-        elif Task.objects.filter(project=project_id, task_managers=employee).exists():
-            tasks = Task.objects.filter(project=project_id, task_managers=employee)
-        # if the employee ids a member of task under the project
-        elif Task.objects.filter(project=project_id, task_members=employee).exists():
-            tasks = Task.objects.filter(project=project_id, task_members=employee)
-        form.fields["task_id"].queryset = tasks
-        form.fields["task_id"].choices = list(form.fields["task_id"].choices)
-        if employee in project.managers.all() or request.user.is_superuser:
-            form.fields["task_id"].choices.append(("dynamic_create", "Dynamic create"))
-        task_id = request.GET.get("task_id")
-        if task_id:
-            form.fields["task_id"].initial = task_id
-    else:
-        form.fields["task_id"].queryset = Task.objects.none()
-
-    task_field_html = render_to_string(
-        "cbv/timesheet/task_field.html",
-        {
-            "form": form,
-            "field_name": "task_id",
-            "field": form.fields["task_id"],
-        },
-    )
-    return HttpResponse(task_field_html)
-
-
-@login_required
 def time_sheet_creation(request):
     """
     View function to handle the creation of a new time sheet.
@@ -1619,7 +1565,6 @@ def time_sheet_creation(request):
             )
     return render(request, "time_sheet/form-create.html", context={"form": form})
 
-
 @login_required
 def time_sheet_project_creation(request):
     """
@@ -1645,6 +1590,7 @@ def time_sheet_project_creation(request):
     return render(
         request, "time_sheet/form_project_time_sheet.html", context={"form": form}
     )
+
 
 
 @login_required
@@ -1949,3 +1895,26 @@ def time_sheet_bulk_delete(request):
                 _("You cannot delete %(timesheet)s.") % {"timesheet": timesheet},
             )
     return JsonResponse({"message": "Success"})
+
+def get_members(request):
+    project_id = request.GET.get("project_id")
+    form = TimeSheetForm()
+    if project_id and project_id != "dynamic_create":
+        project = Project.objects.filter(id=project_id).first()
+        if project:
+            members = (project.managers.all() | project.members.all()).distinct()
+            form.fields["employee_id"].queryset = members
+    else:
+        form.fields["employee_id"].queryset = Employee.objects.none()
+
+    employee_field_html = render_to_string(
+        "cbv/timesheet/employee_field.html",
+        {
+            "form": form,
+            "field_name": "employee_id",
+            "field": form.fields["employee_id"],
+            "project_id": project_id,
+        },
+    )
+    return HttpResponse(employee_field_html)
+

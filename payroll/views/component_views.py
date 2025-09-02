@@ -1591,7 +1591,9 @@ def view_reimbursement(request):
     
     medical_groups = []
     for emp in employees:
-        emp_claims = medical_encashments.filter(employee_id=emp)
+        emp_claims = medical_encashments.filter(employee_id=emp).prefetch_related(
+            "other_attachments"
+        )
         approved_total = (
             emp_claims.filter(status="approved", allowance_on__gte=start, allowance_on__lt=end)
             .aggregate(total=Sum("amount"))
@@ -1699,7 +1701,9 @@ def search_reimbursement(request):
     
     medical_groups = []
     for emp in employees:
-        emp_claims = medical_encashments.filter(employee_id=emp)
+        emp_claims = medical_encashments.filter(employee_id=emp).prefetch_related(
+            "other_attachments"
+        )
         approved_total = (
             emp_claims.filter(status="approved", allowance_on__gte=start, allowance_on__lt=end)
             .aggregate(total=Sum("amount"))

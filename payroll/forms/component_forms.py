@@ -811,6 +811,7 @@ class ReimbursementForm(ModelForm):
             if self.request and not self.instance.pk and self.request.GET.get("type"):
                 self.initial["type"] = self.request.GET.get("type")
         except Exception:
+            amount_val = -1
             pass
 
         self.initial["employee_id"] = self.employee.id if self.employee else None
@@ -826,7 +827,8 @@ class ReimbursementForm(ModelForm):
         if not employee_id and getattr(self, "request", None):
             try:
                 employee_id = self.request.GET.get("employee_id")
-            except Exception:
+            except Exception:                    
+                amount_val = -1
                 employee_id = None
 
         if employee_id and (emp := employee_qs.filter(id=employee_id).first()):
@@ -911,6 +913,7 @@ class ReimbursementForm(ModelForm):
             try:
                 type = self.request.GET.get("type") or type
             except Exception:
+                amount_val = -1              
                 pass
         if not type and self.instance:
             type = self.instance.type
@@ -967,6 +970,7 @@ class ReimbursementForm(ModelForm):
             try:
                 _type = self.request.GET.get("type") or _type
             except Exception:
+                amount_val = -1
                 pass
         if not _type and getattr(self.instance, "type", None):
             _type = self.instance.type
@@ -994,16 +998,42 @@ class ReimbursementForm(ModelForm):
 
         if type_ == 'medical_encashment':
             # Build total from JSON expense entries (if provided)
-            expenses_raw = cleaned_data.get("medical_expenses") or self.data.get("medical_expenses")
+            expenses_raw = (
+                cleaned_data.get("medical_expenses")
+                or (self.data.get("medical_expenses") if self.data else None)
+            )
+
+            print(">> cleaned_data.medical_expenses:", cleaned_data.get("medical_expenses"))
+            print(">> self.data.medical_expenses:", self.data.get("medical_expenses") if self.data else None)
+
+            if getattr(self, "request", None):
+                # Get *all* values for medical_expenses (handles duplicates like JSON + null)
+                raw_list = self.request.POST.getlist("medical_expenses")
+                print(">> POST medical_expenses list:", raw_list)
+                expenses_raw = next((val for val in raw_list if val and val != "null"), expenses_raw)
+
             import json as _json
             expenses = []
             if isinstance(expenses_raw, str) and expenses_raw.strip():
                 try:
-                    expenses = _json.loads(expenses_raw)
+                    parsed = _json.loads(expenses_raw)
+                    # Filter out completely empty rows
+                    expenses = [
+                        it for it in (parsed or [])
+                        if any(str((it or {}).get(k, "")).strip() for k in [
+                            "expense_type", "provider", "expense_date", "expense_amount", "receipt_no_date"
+                        ])
+                    ]
                 except Exception:
+                    amount_val = -1
                     self.add_error("medical_expenses", _("Invalid expense data"))
             elif isinstance(expenses_raw, list):
-                expenses = expenses_raw
+                expenses = [
+                    it for it in (expenses_raw or [])
+                    if any(str((it or {}).get(k, "")).strip() for k in [
+                        "expense_type", "provider", "expense_date", "expense_amount", "receipt_no_date"
+                    ])
+                ]
 
             # client-side ensures 1..5, but enforce server-side too
             if not expenses:
@@ -1012,14 +1042,14 @@ class ReimbursementForm(ModelForm):
                 self.add_error("medical_expenses", _("Maximum 5 expenses allowed"))
 
             total = 0
-            from datetime import date as _date
             for idx, item in enumerate(expenses or []):
                 etype = (item or {}).get("expense_type")
                 provider = (item or {}).get("provider")
                 edate = (item or {}).get("expense_date")
                 amount_val = None
                 try:
-                    amount_val = float((item or {}).get("expense_amount"))
+                    amt_str = str((item or {}).get("expense_amount", "")).replace(",", "").strip()
+                    amount_val = float(amt_str)
                 except Exception:
                     amount_val = -1
                 receipt = (item or {}).get("receipt_no_date")
@@ -1036,6 +1066,7 @@ class ReimbursementForm(ModelForm):
                         if exd > datetime.date.today():
                             self.add_error("medical_expenses", _("Expense #{}: Date cannot be in the future".format(idx+1)))
                     except Exception:
+                        amount_val = -1
                         self.add_error("medical_expenses", _("Expense #{}: Invalid date".format(idx+1)))
                 if amount_val is None or amount_val <= 0:
                     self.add_error("medical_expenses", _("Expense #{}: Amount must be greater than 0".format(idx+1)))
@@ -1045,6 +1076,10 @@ class ReimbursementForm(ModelForm):
                     if not str(receipt).strip().isdigit():
                         self.add_error("medical_expenses", _("Expense #{}: Receipt must be numeric".format(idx+1)))
                 total += amount_val if amount_val and amount_val > 0 else 0
+
+            # Persist filtered expenses back so instance saves it
+            if expenses:
+                cleaned_data["medical_expenses"] = expenses
 
             # Validate claim_for and dependent name
             claim_for = cleaned_data.get("claim_for") or self.data.get("claim_for")
@@ -1236,6 +1271,7 @@ class ReimbursementForm(ModelForm):
                         redirect=f"/payroll/view-reimbursement?id={instance.id}",
                     )
             except Exception:
+                amount_val = -1
                 pass
 
         return instance, attachments
@@ -1268,6 +1304,8 @@ class PayslipAutoGenerateForm(ModelForm):
         context = {"form": self}
         table_html = render_to_string("common_form.html", context)
         return table_html
+
+
 
 
 

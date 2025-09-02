@@ -1088,7 +1088,6 @@
                                         <div class="oh-sticky-table__thead">
                                             <div class="oh-sticky-table__tr">
                                                 <div class="oh-sticky-table__th">{% trans "Title" %}</div>
-                                                <div class="oh-sticky-table__th">{% trans "Description" %}</div>
                                                 <div class="oh-sticky-table__th">{% trans "Date" %}</div>
                                                 <div class="oh-sticky-table__th">{% trans "Attachment" %}</div>
                                                 <div class="oh-sticky-table__th">{% trans "Claim Submission Date" %}</div>
@@ -1101,12 +1100,14 @@
                                             {% for claim in item.claims %}
                                             <div class="oh-sticky-table__tr">
                                                 <div class="oh-sticky-table__td">{{ claim.title }}</div>
-                                                <div class="oh-sticky-table__td"><span title="{{ claim.description }}">{{ claim.description|truncatechars:40 }}</span></div>
                                                 <div class="oh-sticky-table__td">{{ claim.allowance_on }}</div>
                                                 <div class="oh-sticky-table__td">
                                                     {% if claim.attachment %}
-                                                    <a href="{{ claim.attachment.url }}" download><ion-icon name="download-outline"></ion-icon></a>
+                                                        <div><a href="{{ claim.attachment.url }}" download>{{ claim.attachment.name|cut:'payroll/reimbursements/' }}</a></div>
                                                     {% endif %}
+                                                    {% for file in claim.other_attachments.all %}
+                                                        <div><a href="{{ file.attachment.url }}" download>{{ file.attachment.name|cut:'payroll/reimbursements/' }}</a></div>
+                                                    {% endfor %}
                                                 </div>
                                                 <div class="oh-sticky-table__td dateformat_changer">{{ claim.created_at|date:"F j, Y" }}</div>
                                                 <div class="oh-sticky-table__td">{{ claim.amount }}</div>

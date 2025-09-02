@@ -16,9 +16,9 @@
 
 <div class="oh-payslip__header">
   <div class="oh-payslip__header-left">
-    <div class="oh-payroll__component-title">{% trans "New Medical Form" %}</div>
+    <div class="oh-payroll__component-title">{% trans "Medical Reimbursement Form" %}</div>
   </div>
-  <div class="oh-payslip__header-right mr-muted">{% trans "Attach PDFs or images (max 5MB each)" %}</div>
+
   {{ form.non_field_errors }}
   {% for field in form.hidden_fields %}{{ field }}{% endfor %}
 </div>
@@ -31,7 +31,6 @@
 
   <div class="mr-card mr-col-4">
     <h4>{% trans "Employee Information" %}</h4>
-    <div class="mr-muted">{% trans "Pre-filled employee details." %}</div>
     {% if perms.payroll.add_reimbursement %}
       <div class="mb-2">
         <label class="oh-label required-star" for="id_employee_id">{% trans 'Employee' %}</label>
@@ -111,13 +110,13 @@
     <div id="docsPreview" class="mt-2"></div>
   </div>
 
-  <div class="mr-card mr-col-4 mr-total">
-    <h4>{% trans "Amount" %}</h4>
+  <div class="mr-card mr-col-8 mr-total ">
+    <h3>{% trans " Total Claimed Amount" %}</h3>
     {{ form.amount|add_class:'oh-input w-100'|attr:'readonly:readonly' }}
-    <small class="mr-muted">{% trans "Auto-calculated from expense amounts" %}</small>
+   
   </div>
 
-  <div class="mr-col-12 d-flex flex-row-reverse">
+  <div class="mr-col-12 d-flex flex-row-reverse border border-rounded p-3">
     <button type="submit" class="oh-btn oh-btn--secondary mt-2 ml-2">{% trans 'Submit Claim' %}</button>
     <button type="button" class="oh-btn oh-btn--light-bkg mt-2" data-toggle="oh-modal-toggle" data-target="#objectCreateModal">{% trans 'Cancel' %}</button>
   </div>

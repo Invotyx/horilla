@@ -833,11 +833,11 @@ class ReimbursementForm(ModelForm):
 
         if employee_id and (emp := employee_qs.filter(id=employee_id).first()):
             return emp
+        if self.instance and self.instance.pk:
+            return self.instance.employee_id
 
         if self.request and (emp := self.request.user.employee_get):
-            if not self.instance.pk and emp in employee_qs:
-                return emp
-            if self.instance.pk and emp.id == self.instance.employee_id:
+            if emp in employee_qs:
                 return emp
 
         return employee_qs.first()
@@ -920,23 +920,23 @@ class ReimbursementForm(ModelForm):
             
         is_edit = self.instance and self.instance.pk
 
-        if type == "reimbursement" and is_edit:
+        if type == "reimbursement":
             exclude_fields += [
                 "leave_type_id",
                 "cfd_to_encash",
                 "ad_to_encash",
                 "bonus_to_encash",
             ]
-        elif type == "medical_encashment" and (is_edit or self.data):
+        elif type == "medical_encashment":
             exclude_fields += [
                 "leave_type_id",
                 "cfd_to_encash",
                 "ad_to_encash",
                 "bonus_to_encash",
             ]
-        elif type == "leave_encashment" and (is_edit or self.data):
+        elif type == "leave_encashment":
             exclude_fields += ["attachment", "amount", "bonus_to_encash"]
-        elif type == "bonus_encashment" and (is_edit or self.data):
+        elif type == "bonus_encashment":
             exclude_fields += [
                 "attachment",
                 "amount",

@@ -161,8 +161,8 @@
                   <div class="oh-sticky-table__td dateformat_changer">
                     {{work_type_request.requested_till}}
                   </div>
-                  <div class="oh-sticky-table__td dateformat_changer">
-                    {{ work_type_request.created_at|date:"Y-m-d H:i" }}
+                  <div class="oh-sticky-table__td oh-timeoff-modal__stat-count">
+                    {{ work_type_request.created_at|date:"d-M-Y h:i A" }}
                   </div>
                   <div class="oh-sticky-table__td">
                     {{work_type_request.description|truncatechars:25}}

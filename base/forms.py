@@ -407,7 +407,7 @@ class AssignUserGroup(Form):
 
 class AssignPermission(Form):
     """
-    Forms to assign user permision
+    Form to assign user permission
     """
 
     employee = HorillaMultiSelectField(
@@ -421,15 +421,14 @@ class AssignPermission(Form):
         ),
         label="Employee",
     )
-    try:
-        permissions = forms.MultipleChoiceField(
-            choices=[(perm.codename, perm.name) for perm in Permission.objects.all()],
-            error_messages={
-                "required": "Please choose a permission.",
-            },
-        )
-    except:
-        pass
+
+    permissions = forms.MultipleChoiceField(
+        choices=[(perm.codename, perm.name) for perm in Permission.objects.all()],
+        required=False,  # allow empty submissions
+        error_messages={
+            "required": "Please choose a permission.",
+        },
+    )
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -439,18 +438,18 @@ class AssignPermission(Form):
         emps = self.data.getlist("employee")
         if emps:
             self.errors.pop("employee", None)
-        super().clean()
-        return
+        cleaned_data = super().clean()   # return dict, not None
+        return cleaned_data
 
     def save(self):
-        """
-        Save method to assign permission to employee
-        """
         user_ids = Employee.objects.filter(
             id__in=self.data.getlist("employee")
         ).values_list("employee_user_id", flat=True)
-        permissions = self.cleaned_data["permissions"]
-        permissions = Permission.objects.filter(codename__in=permissions)
+
+        # use .get to avoid KeyError
+        permission_codes = self.cleaned_data.get("permissions", [])
+        permissions = Permission.objects.filter(codename__in=permission_codes)
+
         users = User.objects.filter(id__in=user_ids)
         for user in users:
             user.user_permissions.set(permissions)

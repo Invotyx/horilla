@@ -218,6 +218,11 @@ class ReimbursementSerializer(serializers.ModelSerializer):
 
     def get_other_attachements(self, obj):
         attachments = []
+        if obj.attachment:
+            try:
+                attachments.append(obj.attachment.url)
+            except:
+                pass
         for attachment in obj.other_attachments.all():
             try:
                 attachments.append(attachment.attachment.url)
@@ -306,16 +311,19 @@ class ReimbursementSerializer(serializers.ModelSerializer):
         request_files = self.context["request"].FILES
         attachments = request_files.getlist("attachment")
         if attachments:
-            for attachment in attachments:
+            # First file stored as primary attachment
+            self.validated_data["attachment"] = attachments[0]
+            for attachment in attachments[1:]:
                 file_instance = ReimbursementMultipleAttachment()
                 file_instance.attachment = attachment
                 file_instance.save()
                 multiple_attachment_ids.append(file_instance.pk)
 
         instance = super().save()
-        instance.other_attachments.add(*multiple_attachment_ids)
+        if multiple_attachment_ids:
+            instance.other_attachments.add(*multiple_attachment_ids)
 
-        return super().save(**kwargs)
+        return instance
 
 
 class TaxBracketSerializer(serializers.ModelSerializer):

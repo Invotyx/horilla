@@ -1,6 +1,15 @@
 {% load i18n %}
 <h3 class="oh-faq-card__title">{% trans 'Attachments' %}</h3>
 <span class="oh-card__footer--border-top pt-1 mb-3" style="display: block;"></span>
+{% if reimbursement.attachment %}
+<div id="attachmentContainer0">
+    <div class="oh-btn-group" style="width: 10%;">
+        <button onclick="window.open('{{ protocol }}://{{ host }}{{ reimbursement.attachment.url }}', '_blank')" class="oh-btn oh-btn--light text-dark"><ion-icon name="eye-outline"></ion-icon></button>
+    </div>
+    <iframe style="width: 100%;height: 200px;" height="100" src="{{ protocol }}://{{ host }}{{ reimbursement.attachment.url }}" frameborder="0"></iframe>
+
+</div>
+{% endif %}
 {% for attachment in reimbursement.other_attachments.all %}
 <div id="attachmentContainer{{forloop.counter}}">
     <div class="oh-btn-group" style="width: 10%;">

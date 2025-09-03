@@ -1216,19 +1216,24 @@ class ReimbursementForm(ModelForm):
         attachments = self.files.getlist("attachment")
 
         if attachments:
+            # Save the first file as the primary attachment
             self.instance.attachment = attachments[0]
 
         instance = super().save(commit=commit)
 
         if attachments:
-            attachment_objs = [
-                ReimbursementMultipleAttachment(attachment=file) for file in attachments
-            ]
-            created_attachments = ReimbursementMultipleAttachment.objects.bulk_create(
-                attachment_objs
-            )
-            multiple_attachment_ids = [obj.pk for obj in created_attachments]
-            instance.other_attachments.add(*multiple_attachment_ids)
+            # Store any additional files as separate attachments
+            additional_files = attachments[1:]
+            if additional_files:
+                attachment_objs = [
+                    ReimbursementMultipleAttachment(attachment=file)
+                    for file in additional_files
+                ]
+                created_attachments = ReimbursementMultipleAttachment.objects.bulk_create(
+                    attachment_objs
+                )
+                multiple_attachment_ids = [obj.pk for obj in created_attachments]
+                instance.other_attachments.add(*multiple_attachment_ids)
 
         if is_new:
             if instance.type == "medical_encashment":

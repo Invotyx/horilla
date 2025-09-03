@@ -84,6 +84,18 @@
                 <div class="oh-timeoff-modal__stat" style="margin-left: 20px;">
                     <span class="oh-timeoff-modal__stat-title">{% trans "Attachments" %}</span>
                     <span class="oh-timeoff-modal__stat-count">
+                        {% if reimbursement.attachment %}
+                        <a
+                            href="{{reimbursement.attachment.url}}"
+                            rel="noopener noreferrer"
+                            target="_blank"
+                            ><span
+                                class="oh-file-icon oh-file-icon--pdf"
+                                onmouseover="enlargeattachment('{{reimbursement.attachment.url}}')"
+                                style="width:40px;height:40px"
+                            ></span
+                        ></a>
+                        {% endif %}
                         {% for doc in reimbursement.other_attachments.all %}
                         <a
                             href="{{doc.attachment.url}}"

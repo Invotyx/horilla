@@ -405,9 +405,9 @@ class AssignUserGroup(Form):
         return group
 
 
-class AssignPermission(Form):
+class AssignPermission(forms.Form):
     """
-    Form to assign user permission
+    Form to assign user permissions to employees
     """
 
     employee = HorillaMultiSelectField(
@@ -422,9 +422,9 @@ class AssignPermission(Form):
         label="Employee",
     )
 
+    # Declare without choices here (no DB query at import time!)
     permissions = forms.MultipleChoiceField(
-        choices=[(perm.codename, perm.name) for perm in Permission.objects.all()],
-        required=False,  # allow empty submissions
+        required=False,
         error_messages={
             "required": "Please choose a permission.",
         },
@@ -434,19 +434,28 @@ class AssignPermission(Form):
         super().__init__(*args, **kwargs)
         reload_queryset(self.fields)
 
+        # ✅ Safe: populate choices only when the form is instantiated
+        self.fields["permissions"].choices = [
+            (perm.codename, perm.name) for perm in Permission.objects.all()
+        ]
+
     def clean(self):
         emps = self.data.getlist("employee")
         if emps:
             self.errors.pop("employee", None)
-        cleaned_data = super().clean()   # return dict, not None
+        cleaned_data = super().clean()
         return cleaned_data
 
     def save(self):
+        """
+        Save method to assign permissions to employee users
+        """
+        # Get user IDs linked to employees
         user_ids = Employee.objects.filter(
             id__in=self.data.getlist("employee")
         ).values_list("employee_user_id", flat=True)
 
-        # use .get to avoid KeyError
+        # Safe access to permissions
         permission_codes = self.cleaned_data.get("permissions", [])
         permissions = Permission.objects.filter(codename__in=permission_codes)
 
@@ -455,7 +464,6 @@ class AssignPermission(Form):
             user.user_permissions.set(permissions)
 
         return self
-
 
 class CompanyForm(ModelForm):
     """

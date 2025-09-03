@@ -107,6 +107,7 @@
     <div class="mr-muted">{% trans "Max 5 files (JPEG, PDF, PNG)" %}</div>
     {{ form.attachment|add_class:'oh-input w-100' }}
     {{ form.attachment.errors }}
+
         {% if form.instance.pk %}
       <div class="mt-2">
         {% if form.instance.attachment %}
@@ -121,6 +122,7 @@
         {% endfor %}
       </div>
     {% endif %}
+
     <div id="docsPreview" class="mt-2"></div>
   </div>
 
@@ -132,7 +134,9 @@
 
   <div class="mr-col-12 d-flex flex-row-reverse border border-rounded p-3">
     <button type="submit" class="oh-btn oh-btn--secondary mt-2 ml-2">{% trans 'Submit Claim' %}</button>
+
     <button type="button" class="oh-btn oh-btn--light-bkg mt-2" onclick="$(this).closest('.oh-modal--show').removeClass('oh-modal--show')">{% trans 'Cancel' %}</button>
+
   </div>
 </div>
 

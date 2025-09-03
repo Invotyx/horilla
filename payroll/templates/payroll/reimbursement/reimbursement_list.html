@@ -1102,6 +1102,7 @@
                                                 <div class="oh-sticky-table__td">{{ claim.title }}</div>
                                                 <div class="oh-sticky-table__td">{{ claim.allowance_on }}</div>
                                                 <div class="oh-sticky-table__td">
+
                                                 {% if claim.attachment %}
                                                     <div><a href="{{ claim.attachment.url }}" download>{{ claim.attachment.name|cut:'payroll/reimbursements/' }}</a></div>
                                                 {% endif %}
@@ -1109,6 +1110,7 @@
                                                 {% for doc in claim.other_attachments.all %}
                                                     <div><a href="{{ doc.attachment.url }}" download>{{ doc.attachment.name|cut:'payroll/reimbursements/' }}</a></div>
                                                 {% endfor %}
+
                                                 </div>
                                                 <div class="oh-sticky-table__td dateformat_changer">{{ claim.created_at|date:"F j, Y" }}</div>
                                                 <div class="oh-sticky-table__td">{{ claim.amount }}</div>

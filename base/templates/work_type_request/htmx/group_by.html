@@ -93,6 +93,9 @@
                     {% trans "Requested Till" %}
                   </div>
                   <div class="oh-sticky-table__th">
+                    {% trans "Applied On" %}
+                  </div>
+                  <div class="oh-sticky-table__th">
                     {% trans "Description" %}
                   </div>
                   <div class="oh-sticky-table__th">
@@ -157,6 +160,9 @@
                   </div>
                   <div class="oh-sticky-table__td dateformat_changer">
                     {{work_type_request.requested_till}}
+                  </div>
+                  <div class="oh-sticky-table__td dateformat_changer">
+                    {{ work_type_request.created_at|date:"Y-m-d H:i" }}
                   </div>
                   <div class="oh-sticky-table__td">
                     {{work_type_request.description|truncatechars:25}}

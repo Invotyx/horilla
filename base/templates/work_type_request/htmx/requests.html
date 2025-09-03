@@ -69,8 +69,12 @@
                         class="oh-sticky-table__th {% if request.sort_option.order == '-requested_till' %}arrow-up {% elif request.sort_option.order == 'requested_till' %}arrow-down {% else %}arrow-up-down {% endif %}"
                         hx-get="{% url 'work-type-request-search' %}?{{pd}}&orderby=requested_till"
                         hx-target="#view-container">{% trans "Requested Till" %}</div>
-                    <div data-cell-index="5" data-cell-title='{% trans "Status" %}' class="oh-sticky-table__th">{% trans "Status" %}</div>
-                    <div data-cell-index="6" data-cell-title='{% trans "Description" %}' class="oh-sticky-table__th">{% trans "Description" %}</div>
+                    <div data-cell-index="5" data-cell-title='{% trans "Applied On" %}'
+                        class="oh-sticky-table__th {% if request.sort_option.order == '-created_at' %}arrow-up {% elif request.sort_option.order == 'created_at' %}arrow-down {% else %}arrow-up-down {% endif %}"
+                        hx-get="{% url 'work-type-request-search' %}?{{pd}}&orderby=created_at"
+                        hx-target="#view-container">{% trans "Applied On" %}</div>
+                    <div data-cell-index="6" data-cell-title='{% trans "Status" %}' class="oh-sticky-table__th">{% trans "Status" %}</div>
+                    <div data-cell-index="7" data-cell-title='{% trans "Description" %}' class="oh-sticky-table__th">{% trans "Description" %}</div>
                     <div class="oh-sticky-table__th" style="width:115px;">{% trans "Comment" %}</div>
                     <div class="oh-sticky-table__th" style="width: 190px;">{% trans "Actions" %}</div>
                     {% if perms.base.change_worktyperequest or request.user|is_reportingmanager %}
@@ -104,8 +108,9 @@
                         {{work_type_request.requested_date}}</div>
                     <div class="oh-sticky-table__td dateformat_changer" data-cell-index="4">
                         {{work_type_request.requested_till}}</div>
-                    <div class="oh-sticky-table__td" data-cell-index="5">{{work_type_request.request_status}}</div>
-                    <div class="oh-sticky-table__td" data-cell-index="6">
+                    <div class="oh-sticky-table__td dateformat_changer" data-cell-index="5">{{ work_type_request.created_at|date:"Y-m-d H:i" }}</div>
+                    <div class="oh-sticky-table__td" data-cell-index="6">{{work_type_request.request_status}}</div>
+                    <div class="oh-sticky-table__td" data-cell-index="7">
                         {{work_type_request.description|truncatechars:25}}
                     </div>
                     <div class="oh-sticky-table__td" onclick="event.stopPropagation();">

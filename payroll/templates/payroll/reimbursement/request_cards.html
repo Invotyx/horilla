@@ -146,6 +146,12 @@
                             </div>
                             <h3 class="oh-faq-card__title">{{ req.title }}</h3>
                             <p class="oh-faq-card__desc">{{ req.description }}.</p>
+                            {% if req.reject_reason %}
+                              <p class="oh-faq-card__desc bg-danger p-2 text-white">
+                               Rejection Reason  : {{ req.reject_reason }}
+                                </p>
+                            {% endif %}
+
                             <span
                                 class="oh-card__footer--border-top pt-1"
                                 style="display: block"
@@ -447,6 +453,12 @@
                             </div>
                             <h3 class="oh-faq-card__title">{{ req.title }}</h3>
                             <p class="oh-faq-card__desc">{{ req.description }}.</p>
+                            {% if req.reject_reason %}
+                              <p class="oh-faq-card__desc bg-danger p-2 text-white">
+                               Rejection Reason  : {{ req.reject_reason }}
+                                </p>
+                            {% endif %}
+
                             <span
                                 class="oh-card__footer--border-top pt-1"
                                 style="display: block"
@@ -748,6 +760,12 @@
                             </div>
                             <h3 class="oh-faq-card__title">{{ req.title }}</h3>
                             <p class="oh-faq-card__desc">{{ req.description }}.</p>
+                            {% if req.reject_reason %}
+                              <p class="oh-faq-card__desc bg-danger p-2 text-white">
+                               Rejection Reason  : {{ req.reject_reason }}
+                                </p>
+                            {% endif %}
+
                             <span
                                 class="oh-card__footer--border-top pt-1"
                                 style="display: block"
@@ -1043,6 +1061,12 @@
                             </div>
                             <h3 class="oh-faq-card__title">{{ req.title }}</h3>
                             <p class="oh-faq-card__desc">{{ req.description }}.</p>
+                            {% if req.reject_reason %}
+                              <p class="oh-faq-card__desc bg-danger p-2 text-white">
+                               Rejection Reason  : {{ req.reject_reason }}
+                                </p>
+                            {% endif %}
+
                             <span
                                 class="oh-card__footer--border-top pt-1"
                                 style="display: block"

@@ -80,16 +80,19 @@
         {{ form.allowance_on|add_class:'oh-input w-100' }}
         {{ form.allowance_on.errors }}
       </div>
-      <div class="col-12 mt-2">
-        <label class="oh-label" for="id_title">{% trans 'Title' %}</label>
-        {{ form.title|add_class:'oh-input w-100' }}
-        {{ form.title.errors }}
-      </div>
+
     </div>
   </div>
 
   <div class="mr-card mr-col-4">
-    <h4>{% trans "Additional Description" %}</h4>
+    <h4 class= "">{% trans "Reimbursement Details" %}</h4>
+          <div class="mb-2">
+        <label class="oh-label required-star" for="id_title">{% trans 'Title' %}</label>
+        {{ form.title|add_class:'oh-input w-100' }}
+        {{ form.title.errors }}
+      </div>
+
+    <label class= "oh-label required-star">{% trans "Description" %}</label>
     {{ form.description|add_class:'oh-input w-100' }}
     {{ form.description.errors }}
   </div>

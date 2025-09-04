@@ -76,8 +76,10 @@
                                         style="display: inline;
                                         {% if req.status == "approved" %}background:#9acd3245; {% elif req.status == "rejected" %}
                                         background:#ff45002e;{% endif %}">
+
                                         {% if req.status == 'rejected' and req.rejected_by_department %}
                                             Rejected by {{ req.rejected_by_department }}
+
                                         {% else %}
                                             {{ req.get_status_display }}
                                         {% endif %}
@@ -147,9 +149,11 @@
                             <h3 class="oh-faq-card__title">{{ req.title }}</h3>
                             <p class="oh-faq-card__desc">{{ req.description }}.</p>
                             {% if req.reject_reason %}
+
                               <p class="oh-faq-card__desc bg-danger p-2 text-white">
                                Rejection Reason  : {{ req.reject_reason }}
                                 </p>
+
                             {% endif %}
                             <span
                                 class="oh-card__footer--border-top pt-1"
@@ -238,15 +242,15 @@
                                 </p>
                                 {% endif %}
                                 <div class="oh-btn-group">
-                                    <button
-                                        type="button"
-                                        title="{% trans 'Reject' %}"
-                                        onclick="$('#requestCard{{ req.id }} [name=amount]').attr('required',false);reimbursementConfirm('Do You really want to reject the request?','#requestCard{{ req.id }}');$('#requestCard{{ req.id }} [name=status]').val('canceled')"
-                                        class="oh-btn oh-btn--danger w-100"
-                                    >
-                                        <ion-icon class="me-1" name="close-circle-outline"></ion-icon>
-                                    </button>
                                     {% if req.status != "approved" and req.status != "rejected" %}
+                                        <button
+                                            type="button"
+                                            title="{% trans 'Reject' %}"
+                                            onclick="$('#requestCard{{ req.id }} [name=amount]').attr('required',false);reimbursementConfirm('Do You really want to reject the request?','#requestCard{{ req.id }}');$('#requestCard{{ req.id }} [name=status]').val('canceled')"
+                                            class="oh-btn oh-btn--danger w-100"
+                                        >
+                                            <ion-icon class="me-1" name="close-circle-outline"></ion-icon>
+                                        </button>
                                         <button
                                             type="button"
                                             onclick="reimbursementConfirm('Do You really want to approve the request?','#requestCard{{ req.id }}',true);$('#requestCard{{ req.id }} [name=status]').val('approved')"
@@ -258,9 +262,15 @@
                                     {% else %}
                                         <button
                                             type="button"
+                                            class="oh-btn oh-btn--danger oh-btn--disabled w-100"
+                                        >
+                                            <ion-icon class="me-1" name="close-circle-outline"></ion-icon>
+                                        </button>
+                                        <button
+                                            type="button"
                                             class="oh-btn oh-btn--success oh-btn--disabled w-100"
                                         >
-                                        <ion-icon class="me-1" name="checkmark-outline"></ion-icon>
+                                            <ion-icon class="me-1" name="checkmark-outline"></ion-icon>
                                         </button>
                                     {% endif %}
                                 </div>
@@ -382,8 +392,10 @@
                                         style="display: inline;
                                         {% if req.status == "approved" %}background:#9acd3245; {% elif req.status == "rejected" %}
                                         background:#ff45002e;{% endif %}">
+
                                         {% if req.status == 'rejected' and req.rejected_by_department %}
                                             Rejected by {{ req.rejected_by_department }}
+
                                         {% else %}
                                             {{ req.get_status_display }}
                                         {% endif %}
@@ -452,11 +464,13 @@
                             </div>
                             <h3 class="oh-faq-card__title">{{ req.title }}</h3>
                             <p class="oh-faq-card__desc">{{ req.description }}.</p>
+
                             {% if req.reject_reason %}
                               <p class="oh-faq-card__desc bg-danger p-2 text-white">
                                Rejection Reason  : {{ req.reject_reason }}
                                 </p>
                             {% endif %}
+
                             <span
                                 class="oh-card__footer--border-top pt-1"
                                 style="display: block"
@@ -544,6 +558,7 @@
                                 </p>
                                 {% endif %}
 
+
                                     {% if req.status != "approved" and req.status != "rejected" %}
                                                                     <div class="oh-btn-group">
                                     <button
@@ -555,6 +570,15 @@
                                         <ion-icon class="me-1" name="close-circle-outline"></ion-icon>
                                     </button>
 
+
+                                        <button
+                                            type="button"
+                                            title="{% trans 'Reject' %}"
+                                            onclick="$('#requestCard{{ req.id }} [name=amount]').attr('required',false);reimbursementConfirm('Do You really want to reject the request?','#requestCard{{ req.id }}');$('#requestCard{{ req.id }} [name=status]').val('canceled')"
+                                            class="oh-btn oh-btn--danger w-100"
+                                        >
+                                            <ion-icon class="me-1" name="close-circle-outline"></ion-icon>
+                                        </button>
                                         <button
                                             type="button"
                                             onclick="reimbursementConfirm('Do You really want to approve the request?','#requestCard{{ req.id }}',true);$('#requestCard{{ req.id }} [name=status]').val('approved')"
@@ -564,7 +588,7 @@
                                             <ion-icon class="me-1" name="checkmark-outline"></ion-icon>
                                         </button>
                                     {% else %}
-                                       
+
                                     {% endif %}
                                 </div>
                                 <input
@@ -686,8 +710,10 @@
                                         style="display: inline;
                                         {% if req.status == "approved" %}background:#9acd3245; {% elif req.status == "rejected" %}
                                         background:#ff45002e;{% endif %}">
+
                                         {% if req.status == 'rejected' and req.rejected_by_department %}
                                             Rejected by {{ req.rejected_by_department }}
+
                                         {% else %}
                                             {{ req.get_status_display }}
                                         {% endif %}
@@ -756,9 +782,11 @@
                             <h3 class="oh-faq-card__title">{{ req.title }}</h3>
                             <p class="oh-faq-card__desc">{{ req.description }}.</p>
                             {% if req.reject_reason %}
+
                               <p class="oh-faq-card__desc bg-danger p-2 text-white">
                                Rejection Reason  : {{ req.reject_reason }}
                                 </p>
+
                             {% endif %}
                             <span
                                 class="oh-card__footer--border-top pt-1"
@@ -845,6 +873,7 @@
                                 </p>
                                 {% endif %}
                                 <div class="oh-btn-group">
+                                    {% if req.status != "approved" and req.status != 'rejected' %}
                                     <button
                                         type="button"
                                         onclick="$('#requestCard{{ req.id }} [name=amount]').attr('required',false);reimbursementConfirm('Do You really want to reject the request?','#requestCard{{ req.id }}');$('#requestCard{{ req.id }} [name=status]').val('canceled')"
@@ -852,7 +881,6 @@
                                     >
                                     <ion-icon class="me-1" name="close-circle-outline"></ion-icon>
                                     </button>
-                                    {% if req.status != "approved" and req.status != 'rejected' %}
                                     <button
                                         type="button" title="{% trans 'Approve' %}"
                                         onclick="reimbursementConfirm('Do You really want to approve the request?','#requestCard{{ req.id }}',true);$('#requestCard{{ req.id }} [name=status]').val('approved')"
@@ -861,6 +889,12 @@
                                     <ion-icon class="me-1" name="checkmark-outline"></ion-icon>
                                     </button>
                                     {% else %}
+                                    <button
+                                        type="button"
+                                        class="oh-btn oh-btn--danger oh-btn--disabled w-100"
+                                    >
+                                    <ion-icon class="me-1" name="close-circle-outline"></ion-icon>
+                                    </button>
                                     <button
                                         type="button" title="{% trans 'Approve' %}"
                                         class="oh-btn oh-btn--success oh-btn--disabled w-100"
@@ -987,8 +1021,10 @@
                                         style="display: inline;
                                         {% if req.status == "approved" %}background:#9acd3245; {% elif req.status == "rejected" %}
                                         background:#ff45002e;{% endif %}">
+
                                         {% if req.status == 'rejected' and req.rejected_by_department %}
                                             Rejected by {{ req.rejected_by_department }}
+
                                         {% else %}
                                             {{ req.get_status_display }}
                                         {% endif %}
@@ -1056,9 +1092,11 @@
                             <h3 class="oh-faq-card__title">{{ req.title }}</h3>
                             <p class="oh-faq-card__desc">{{ req.description }}.</p>
                             {% if req.reject_reason %}
+
                               <p class="oh-faq-card__desc bg-danger p-2 text-white">
                                Rejection Reason  : {{ req.reject_reason }}
                                 </p>
+
                             {% endif %}
                             <span
                                 class="oh-card__footer--border-top pt-1"
@@ -1146,6 +1184,7 @@
                                 </p>
                                 {% endif %}
                                 <div class="oh-btn-group">
+                                    {% if req.status != "approved" and req.status != 'rejected' %}
                                     <button
                                         type="button"
                                         onclick="$('#requestCard{{ req.id }} [name=amount]').attr('required',false);reimbursementConfirm('Do You really want to reject the request?','#requestCard{{ req.id }}');$('#requestCard{{ req.id }} [name=status]').val('canceled')"
@@ -1153,7 +1192,6 @@
                                     >
                                     <ion-icon class="me-1" name="close-circle-outline"></ion-icon>
                                     </button>
-                                    {% if req.status != "approved" and req.status != 'rejected' %}
                                     <button
                                         type="button"
                                         title="{% trans 'Approve' %}"
@@ -1163,6 +1201,12 @@
                                     <ion-icon class="me-1" name="checkmark-outline"></ion-icon>
                                     </button>
                                     {% else %}
+                                    <button
+                                        type="button"
+                                        class="oh-btn oh-btn--danger oh-btn--disabled w-100"
+                                    >
+                                    <ion-icon class="me-1" name="close-circle-outline"></ion-icon>
+                                    </button>
                                     <button
                                         type="button"
                                         class="oh-btn oh-btn--success oh-btn--disabled w-100"

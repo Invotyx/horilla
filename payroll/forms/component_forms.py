@@ -11,6 +11,7 @@ from django.db.models import Sum
 from django import forms
 from django.apps import apps
 from django.template.loader import render_to_string
+from django.core.exceptions import ObjectDoesNotExist
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
@@ -988,9 +989,12 @@ class ReimbursementForm(ModelForm):
         type_ = cleaned_data.get("type") or (
             self.instance.type if self.instance else None
         )
-        employee = cleaned_data.get("employee_id") or (
-            self.instance.employee_id if self.instance else None
-        )
+        employee = cleaned_data.get("employee_id")
+        if not employee and self.instance:
+            try:
+                employee = self.instance.employee_id
+            except ObjectDoesNotExist:
+                employee = None
         amount = cleaned_data.get("amount")
 
         if not type_ or not employee:

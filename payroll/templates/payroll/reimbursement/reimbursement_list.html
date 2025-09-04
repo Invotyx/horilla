@@ -172,15 +172,8 @@
                                         {{req.amount}}
                                         </div>
                                         <div data-cell-index="4" class="oh-sticky-table__td">
-                                        {% if req.status == 'rejected' %}
-                                            {% if req.rejected_by_department %}
-                                                Rejected by {{ req.rejected_by_department }}
-                                            {% else %}
-                                                {{ req.get_status_display }}
-                                            {% endif %}
-                                            {% if req.reject_reason %}
-                                                - {{ req.reject_reason }}
-                                            {% endif %}
+                                        {% if req.status == 'rejected' and req.rejected_by_department %}
+                                            Rejected by {{ req.rejected_by_department }}
                                         {% else %}
                                             {{req.get_status_display}}
                                         {% endif %}
@@ -251,6 +244,13 @@
                                                             >
                                                                 <ion-icon class="me-1" name="checkmark-outline"></ion-icon>
                                                             </button>
+
+                                                        {% else %}
+                                                            <button class='oh-btn oh-btn--success w-100' disabled onclick="event.preventDefault();">
+                                                                <ion-icon class="me-1" name="checkmark-outline"></ion-icon>
+                                                            </button>
+                                                        {% endif %}
+                                                        {% if req.status != 'rejected' %}
                                                             <button
                                                                 type="button"
                                                                 onclick="event.preventDefault();$('#requestCard{{ req.id }} [name=amount]').attr('required',false);reimbursementConfirm('Do You really want to reject the request?','#requestCard{{ req.id }}');$('#requestCard{{ req.id }} [name=status]').val('canceled')"
@@ -260,9 +260,6 @@
                                                                 <ion-icon class="me-1" name="close-circle-outline"></ion-icon>
                                                             </button>
                                                         {% else %}
-                                                            <button class='oh-btn oh-btn--success w-100' disabled onclick="event.preventDefault();">
-                                                                <ion-icon class="me-1" name="checkmark-outline"></ion-icon>
-                                                            </button>
                                                             <button class="oh-btn oh-btn--danger w-100" disabled onclick="event.preventDefault();">
                                                                 <ion-icon class="me-1" name="close-circle-outline"></ion-icon>
                                                             </button>
@@ -525,15 +522,8 @@
                                                 {{req.cfd_to_encash}}
                                             </div>
                                             <div data-cell-index="17" class="oh-sticky-table__td">
-                                                {% if req.status == 'rejected' %}
-                                                    {% if req.rejected_by_department %}
-                                                        Rejected by {{ req.rejected_by_department }}
-                                                    {% else %}
-                                                        {{ req.get_status_display }}
-                                                    {% endif %}
-                                                    {% if req.reject_reason %}
-                                                        - {{ req.reject_reason }}
-                                                    {% endif %}
+                                                {% if req.status == 'rejected' and req.rejected_by_department %}
+                                                    Rejected by {{ req.rejected_by_department }}
                                                 {% else %}
                                                     {{req.get_status_display}}
                                                 {% endif %}
@@ -608,6 +598,16 @@
                                                                 >
                                                                     <ion-icon class="me-1" name="checkmark-outline"></ion-icon>
                                                                 </button>
+                                                            {% else %}
+                                                                <button
+                                                                    type="button"
+                                                                    title="{% trans 'Approve' %}"
+                                                                    class="oh-btn oh-btn--success oh-btn--disabled w-100"
+                                                                >
+                                                                    <ion-icon class="me-1" name="checkmark-outline"></ion-icon>
+                                                                </button>
+                                                            {% endif %}
+                                                            {% if req.status != 'rejected' %}
                                                                 <button
                                                                     type="button"
                                                                     title="{% trans 'Reject' %}"
@@ -617,13 +617,6 @@
                                                                     <ion-icon class="me-1" name="close-circle-outline"></ion-icon>
                                                                 </button>
                                                             {% else %}
-                                                                <button
-                                                                    type="button"
-                                                                    title="{% trans 'Approve' %}"
-                                                                    class="oh-btn oh-btn--success oh-btn--disabled w-100"
-                                                                >
-                                                                    <ion-icon class="me-1" name="checkmark-outline"></ion-icon>
-                                                                </button>
                                                                 <button class="oh-btn oh-btn--danger w-100" disabled onclick="event.preventDefault();">
                                                                     <ion-icon class="me-1" name="close-circle-outline"></ion-icon>
                                                                 </button>
@@ -866,15 +859,8 @@
                                                 {{req.bonus_to_encash}}
                                             </div>
                                             <div data-cell-index="25" class="oh-sticky-table__td">
-                                                {% if req.status == 'rejected' %}
-                                                    {% if req.rejected_by_department %}
-                                                        Rejected by {{ req.rejected_by_department }}
-                                                    {% else %}
-                                                        {{ req.get_status_display }}
-                                                    {% endif %}
-                                                    {% if req.reject_reason %}
-                                                        - {{ req.reject_reason }}
-                                                    {% endif %}
+                                                {% if req.status == 'rejected' and req.rejected_by_department %}
+                                                    Rejected by {{ req.rejected_by_department }}
                                                 {% else %}
                                                     {{req.get_status_display}}
                                                 {% endif %}
@@ -948,6 +934,16 @@
                                                                 >
                                                                     <ion-icon class="me-1" name="checkmark-outline"></ion-icon>
                                                                 </button>
+                                                            {% else %}
+                                                                    <button
+                                                                        title="{% trans 'Approve' %}"
+                                                                        type="button"
+                                                                        class="oh-btn oh-btn--success oh-btn--disabled w-100"
+                                                                    >
+                                                                        <ion-icon class="me-1" name="checkmark-outline"></ion-icon>
+                                                                    </button>
+                                                            {% endif %}
+                                                            {% if req.status != 'rejected' %}
                                                                 <button
                                                                     type="button"
                                                                     onclick="$('#requestCard{{ req.id }} [name=amount]').attr('required',false);reimbursementConfirm('Do You really want to reject the request?','#requestCard{{ req.id }}');$('#requestCard{{ req.id }} [name=status]').val('canceled')"
@@ -957,22 +953,15 @@
 
                                                                 </button>
                                                             {% else %}
-                                                                <button
-                                                                    title="{% trans 'Approve' %}"
-                                                                    type="button"
-                                                                    class="oh-btn oh-btn--success oh-btn--disabled w-100"
-                                                                >
-                                                                    <ion-icon class="me-1" name="checkmark-outline"></ion-icon>
-                                                                </button>
                                                                 <button class="oh-btn oh-btn--danger w-100" disabled onclick="event.preventDefault();">
                                                                     <ion-icon class="me-1" name="close-circle-outline"></ion-icon>
                                                                 </button>
                                                             {% endif %}
-                                                            <input
-                                                                type="submit"
-                                                                hidden
-                                                                id="requestCard{{ req.id }}Button"
-                                                            />
+                                                                <input
+                                                                    type="submit"
+                                                                    hidden
+                                                                    id="requestCard{{ req.id }}Button"
+                                                                />
                                                         </div>
 
                                                     </form>

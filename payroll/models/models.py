@@ -1649,6 +1649,18 @@ class Reimbursement(HorillaModel):
     status = models.CharField(
         max_length=10, choices=status_types, default="requested", editable=False
     )
+    rejected_by_department = models.CharField(
+        max_length=255,
+        null=True,
+        blank=True,
+        verbose_name=_("Rejected By Department"),
+    )
+    reject_reason = models.CharField(
+        max_length=250,
+        null=True,
+        blank=True,
+        verbose_name=_("Rejection Reason"),
+    )
     approved_by = models.ForeignKey(
         Employee,
         on_delete=models.SET_NULL,
@@ -1848,6 +1860,12 @@ class ReimbursementConditionApproval(models.Model):
     sequence = models.IntegerField()
     is_approved = models.BooleanField(default=False)
     is_rejected = models.BooleanField(default=False)
+    reject_reason = models.CharField(
+        max_length=250,
+        null=True,
+        blank=True,
+        verbose_name=_("Rejection Reason"),
+    )
     reimbursement_id = models.ForeignKey(
         Reimbursement, on_delete=models.CASCADE
     )

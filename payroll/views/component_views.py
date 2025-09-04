@@ -84,6 +84,7 @@ from payroll.models.models import (
     Reimbursement,
     ReimbursementMultipleAttachment,
     ReimbursementConditionApproval,
+    ReimbursementrequestComment,
 )
 from payroll.threadings.mail import MailSendThread
 
@@ -1852,6 +1853,7 @@ def approve_reimbursements(request):
         eval_validate(request.GET.get("amount")) if request.GET.get("amount") else 0
     )
     amount = max(0, amount)
+    reject_reason = request.GET.get("reject_reason", "").strip()
     reimbursements = Reimbursement.objects.filter(id__in=ids)
     current_emp = request.user.employee_get
     if status and len(status):
@@ -1934,28 +1936,63 @@ def approve_reimbursements(request):
                             icon="checkmark",
                         )
                 else:
+                    if not reject_reason:
+                        messages.error(request, _("Rejection reason is required"))
+                        continue
+                    if len(reject_reason) > 250:
+                        messages.error(
+                            request,
+                            _("Rejection reason must be 250 characters or fewer"),
+                        )
+                        continue
                     approval.is_rejected = True
+                    approval.reject_reason = reject_reason
                     approval.save()
+                    department = approval.manager_id.get_department()
                     reimbursement.status = "rejected"
+                    reimbursement.rejected_by_department = (
+                        department.department if department else None
+                    )
+                    reimbursement.reject_reason = reject_reason
                     reimbursement.save()
+                    ReimbursementrequestComment.objects.create(
+                        request_id=reimbursement,
+                        employee_id=current_emp,
+                        comment=reject_reason,
+                    )
                     messages.success(
                         request,
                         _(f"Request {reimbursement.get_status_display()} successfully"),
                     )
+                    message = (
+                        f"Your claim has been rejected by {reimbursement.rejected_by_department}. "
+                        f"Reason: {reject_reason}"
+                    )
                     notify.send(
                         current_emp,
                         recipient=emp.employee_user_id,
-                        verb="Your reimbursement request has been rejected.",
-                        verb_ar="تم رفض طلب استرداد النفقات الخاص بك.",
-                        verb_de="Ihr Erstattungsantrag wurde abgelehnt.",
-                        verb_es="Su solicitud de reembolso ha sido rechazada.",
-                        verb_fr="Votre demande de remboursement a été rejetée.",
+                        verb=message,
+                        verb_ar=message,
+                        verb_de=message,
+                        verb_es=message,
+                        verb_fr=message,
                         redirect=reverse("view-reimbursement") + f"?id={reimbursement.id}",
                         icon="checkmark",
                     )
                 continue
 
             reimbursement.status = status
+            if status == "rejected" and reject_reason:
+                reimbursement.reject_reason = reject_reason
+                dept = current_emp.get_department()
+                reimbursement.rejected_by_department = (
+                    dept.department if dept else None
+                )
+                ReimbursementrequestComment.objects.create(
+                    request_id=reimbursement,
+                    employee_id=current_emp,
+                    comment=reject_reason,
+                )
             reimbursement.save()
             if reimbursement.status == "requested":
                 if not (messages.get_messages(request)._queued_messages):
@@ -1966,14 +2003,21 @@ def approve_reimbursements(request):
                     _(f"Request {reimbursement.get_status_display()} successfully"),
                 )
             if status == "rejected":
+                if reject_reason:
+                    message = (
+                        f"Your claim has been rejected by {reimbursement.rejected_by_department}. "
+                        f"Reason: {reject_reason}"
+                    )
+                else:
+                    message = "Your reimbursement request has been rejected."
                 notify.send(
                     request.user.employee_get,
                     recipient=emp.employee_user_id,
-                    verb="Your reimbursement request has been rejected.",
-                    verb_ar="تم رفض طلب استرداد النفقات الخاص بك.",
-                    verb_de="Ihr Erstattungsantrag wurde abgelehnt.",
-                    verb_es="Su solicitud de reembolso ha sido rechazada.",
-                    verb_fr="Votre demande de remboursement a été rejetée.",
+                    verb=message,
+                    verb_ar=message,
+                    verb_de=message,
+                    verb_es=message,
+                    verb_fr=message,
                     redirect=reverse("view-reimbursement") + f"?id={reimbursement.id}",
                     icon="checkmark",
                 )

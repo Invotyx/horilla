@@ -796,7 +796,7 @@ class ReimbursementForm(ModelForm):
     class Meta:
         model = Reimbursement
         fields = "__all__"
-        exclude = ["is_active"]
+        exclude = ["is_active", "rejected_by_department", "reject_reason"]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

@@ -172,7 +172,11 @@
                                         {{req.amount}}
                                         </div>
                                         <div data-cell-index="4" class="oh-sticky-table__td">
-                                        {{req.get_status_display}}
+                                        {% if req.status == 'rejected' and req.rejected_by_department %}
+                                            Rejected by {{ req.rejected_by_department }}
+                                        {% else %}
+                                            {{req.get_status_display}}
+                                        {% endif %}
                                         {% with progress=req.approval_progress %}
                                             {% if progress.1 %}
                                                 ({{ progress.0 }}/{{ progress.1 }} {% trans "approved" %})
@@ -263,6 +267,7 @@
                                                     </div>
                                                     <input type="hidden" name="ids" value="{{ req.id }}" />
                                                     <input type="hidden" name="status" />
+                                                    <input type="hidden" name="reject_reason" />
                                                     <input
                                                         {% comment %} onclick="event.stopPropagation()" {% endcomment %}
                                                         type="submit"
@@ -517,7 +522,11 @@
                                                 {{req.cfd_to_encash}}
                                             </div>
                                             <div data-cell-index="17" class="oh-sticky-table__td">
-                                                {{req.get_status_display}}
+                                                {% if req.status == 'rejected' and req.rejected_by_department %}
+                                                    Rejected by {{ req.rejected_by_department }}
+                                                {% else %}
+                                                    {{req.get_status_display}}
+                                                {% endif %}
                                                 {% with progress=req.approval_progress %}
                                                     {% if progress.1 %}
                                                         ({{ progress.0 }}/{{ progress.1 }} {% trans "approved" %})
@@ -577,6 +586,7 @@
                                                     >
                                                         <input type="hidden" name="ids" value="{{ req.id }}" />
                                                         <input type="hidden" name="status" />
+                                                        <input type="hidden" name="reject_reason" />
                                                         <input type="hidden" name="amount" default="0" min="0" />
                                                         <div class="oh-btn-group" onclick="event.stopPropagation()">
                                                             {% if req.status == 'requested' %}
@@ -849,7 +859,11 @@
                                                 {{req.bonus_to_encash}}
                                             </div>
                                             <div data-cell-index="25" class="oh-sticky-table__td">
-                                                {{req.get_status_display}}
+                                                {% if req.status == 'rejected' and req.rejected_by_department %}
+                                                    Rejected by {{ req.rejected_by_department }}
+                                                {% else %}
+                                                    {{req.get_status_display}}
+                                                {% endif %}
                                                 {% with progress=req.approval_progress %}
                                                     {% if progress.1 %}
                                                         ({{ progress.0 }}/{{ progress.1 }} {% trans "approved" %})
@@ -905,10 +919,11 @@
                                                     <form
                                                         action="{% url 'approve-reimbursements' %}"
                                                     >
-                                                        <input type="hidden" name="ids" value="{{ req.id }}" />
-                                                        <input type="hidden" name="status" />
-                                                        <input type="hidden" name="amount" default="0" min="0" {% if req.status == "approved" %}disabled{% endif %} {% if req.amount %}
-                                                        value="{{req.amount}}"{% endif %}/>
+                                                         <input type="hidden" name="ids" value="{{ req.id }}" />
+                                                         <input type="hidden" name="status" />
+                                                         <input type="hidden" name="reject_reason" />
+                                                         <input type="hidden" name="amount" default="0" min="0" {% if req.status == "approved" %}disabled{% endif %} {% if req.amount %}
+                                                         value="{{req.amount}}"{% endif %}/>
                                                         <div class="oh-btn-group" onclick="event.stopPropagation()">
                                                             {% if req.status == 'requested' %}
                                                                 <button
@@ -1167,30 +1182,6 @@
         <!-- end of Medical tab -->
 
     <script>
-        function reimbursementConfirm(params, target, approve = false) {
-            Swal.fire({
-                text: params,
-                icon: "question",
-                showCancelButton: true,
-                confirmButtonColor: "#008000",
-                cancelButtonColor: "#d33",
-                confirmButtonText: "Confirm",
-                cancelButtonText: "Close",
-            }).then((result) => {
-                if (result.isConfirmed) {
-                    if (approve) {
-                        $(`${target} [name=amount]`).attr("required", true);
-                    }
-                    $(target + "Button").click();
-                    if (event.target.tagName.toLowerCase() === "form") {
-                        event.target.submit();
-                    } else if (event.target.tagName.toLowerCase() === "a") {
-                        window.location.href = event.target.href;
-                    }
-                } else {
-                }
-            });
-        }
         $(document).ready(function () {
             var activeTab = localStorage.getItem("activeTabReimbursment");
             if (activeTab != null) {

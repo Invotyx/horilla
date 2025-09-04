@@ -65,7 +65,13 @@
             </div>
             <div class="oh-timeoff-modal__stat" style="margin-left: 20px;">
                 <span class="oh-timeoff-modal__stat-title">{% trans "Status" %}</span>
-                <span class="oh-timeoff-modal__stat-count">{{reimbursement.get_status_display}}</span>
+                <span class="oh-timeoff-modal__stat-count">
+                    {% if reimbursement.status == 'rejected' and reimbursement.rejected_by_department %}
+                        Rejected by {{ reimbursement.rejected_by_department }}
+                    {% else %}
+                        {{reimbursement.get_status_display}}
+                    {% endif %}
+                </span>
             </div>
         </div>
         {% if reimbursement.type == 'reimbursement' %}

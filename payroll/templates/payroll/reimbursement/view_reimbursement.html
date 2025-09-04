@@ -62,33 +62,6 @@
 </div>
 
 <script>
-    function reimbursementConfirm(params, target, approve = false) {
-        event.preventDefault(); event.stopPropagation()
-        Swal.fire({
-            text: params,
-            icon: "question",
-            showCancelButton: true,
-            confirmButtonColor: "#008000",
-            cancelButtonColor: "#d33",
-            confirmButtonText: "Confirm",
-            cancelButtonText: "Close",
-        }).then((result) => {
-            if (result.isConfirmed) {
-                if (approve) {
-                    $(`${target} [name=amount]`).attr("required", true);
-                }
-                $(target + "Button").click();
-                if (event.target.tagName.toLowerCase() === "form") {
-                    event.target.submit();
-                } else if (event.target.tagName.toLowerCase() === "a") {
-                    window.location.href = event.target.href;
-                }
-            } else {
-            }
-        });
-    }
-
-
     // This lines is used to set default selected stage for exits lines
 
     function enlargeImage(src, $element) {

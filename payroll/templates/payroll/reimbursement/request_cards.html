@@ -76,14 +76,13 @@
                                         style="display: inline;
                                         {% if req.status == "approved" %}background:#9acd3245; {% elif req.status == "rejected" %}
                                         background:#ff45002e;{% endif %}">
-                                        {% if req.status == 'rejected' and req.rejected_by_department %}
-                                            Rejected by {{ req.rejected_by_department }}
-                                        {% else %}
-                                            {{ req.get_status_display }}
-                                        {% endif %}
                                         {% with progress=req.approval_progress %}
-                                            {% if progress.1 %}
-                                                ({{ progress.0 }}/{{ progress.1 }} {% trans "approved" %})
+                                            {% if req.status == 'rejected' and req.rejected_by_department %}
+                                                Rejected by {{ req.rejected_by_department }}
+                                            {% elif progress.1 and progress.0 and progress.0 < progress.1 %}
+                                                Approved by {{ req.last_approved_department }} ({{ progress.0 }}/{{ progress.1 }} {% trans "approved" %})
+                                            {% else %}
+                                                {{ req.get_status_display }}{% if progress.1 %} ({{ progress.0 }}/{{ progress.1 }} {% trans "approved" %}){% endif %}
                                             {% endif %}
                                         {% endwith %}
                                     </div>
@@ -223,20 +222,27 @@
                                     value="{{req.amount}}"{% endif %} />
                                 </p>
                                 {% else %}
-                                <p class="oh-faq-card__desc" style="max-height: 180px">
-                                    <i>
-                                        {% trans 'Requsted for total' %}
-                                        <span class="text-danger">
-                                            {{ req.ad_to_encash|add:req.cfd_to_encash }}
-                                        </span>
-                                        {% trans 'days' %} {% trans 'days to encash.' %}
-                                    </i>
-                                    <input style="display: block;padding:
-                                    10px;margin-top: 10px;" type="number" required
-                                    default="0" min="0" placeholder="Amount"
-                                    name="amount" class="mt-2"{% if req.status == "approved" %}disabled{% endif %} {% if req.amount %}
-                                    value="{{req.amount}}"{% endif %} />
-                                </p>
+                                    {% if req.type == 'medical_encashment' %}
+                                        <p class="oh-faq-card__desc" style="max-height: 180px">
+                                            <i>{% trans 'Medical claim amount can be set by Finance approver only.' %}</i>
+                                            {% if request.user.employee_get and req|can_approve:request.user.employee_get %}
+                                                {% with dep=request.user.employee_get.get_department %}
+                                                    {% if dep and dep.department|lower == 'Accounts & Finance' %}
+                                                        <input style="display:block;padding:10px;margin-top:10px;" type="number" required default="0" min="0" placeholder="Amount" name="amount" class="mt-2"{% if req.status == "approved" %}disabled{% endif %} {% if req.amount %}value="{{req.amount}}"{% endif %} />
+                                                    {% endif %}
+                                                {% endwith %}
+                                            {% endif %}
+                                        </p>
+                                    {% else %}
+                                        <p class="oh-faq-card__desc" style="max-height: 180px">
+                                            <i>
+                                                {% trans 'Requsted for total' %}
+                                                <span class="text-danger">{{ req.ad_to_encash|add:req.cfd_to_encash }}</span>
+                                                {% trans 'days' %} {% trans 'days to encash.' %}
+                                            </i>
+                                            <input style="display:block;padding:10px;margin-top:10px;" type="number" required default="0" min="0" placeholder="Amount" name="amount" class="mt-2"{% if req.status == "approved" %}disabled{% endif %} {% if req.amount %}value="{{req.amount}}"{% endif %} />
+                                        </p>
+                                    {% endif %}
                                 {% endif %}
                                 <div class="oh-btn-group">
                                     <button
@@ -383,19 +389,29 @@
                                         style="display: inline;
                                         {% if req.status == "approved" %}background:#9acd3245; {% elif req.status == "rejected" %}
                                         background:#ff45002e;{% endif %}">
-                                        {% if req.status == 'rejected' and req.rejected_by_department %}
-                                            Rejected by {{ req.rejected_by_department }}
-                                        {% else %}
-                                            {{ req.get_status_display }}
-                                        {% endif %}
                                         {% with progress=req.approval_progress %}
-                                            {% if progress.1 %}
-                                                ({{ progress.0 }}/{{ progress.1 }} {% trans "approved" %})
+                                            {% if req.status == 'rejected' and req.rejected_by_department %}
+                                                Rejected by {{ req.rejected_by_department }}
+                                            {% elif progress.1 and progress.0 and progress.0 < progress.1 %}
+                                                Approved by {{ req.last_approved_department }} ({{ progress.0 }}/{{ progress.1 }} {% trans "approved" %})
+                                            {% else %}
+                                                {{ req.get_status_display }}{% if progress.1 %} ({{ progress.0 }}/{{ progress.1 }} {% trans "approved" %}){% endif %}
                                             {% endif %}
                                         {% endwith %}
                                     </div>
                                 </div>
                                 <div>
+                                    <a
+                                        hx-get="{% url 'reimbursement-individual-view' req.id %}"
+                                        hx-target="#objectDetailsModalTarget"
+                                        data-toggle="oh-modal-toggle"
+                                        data-target="#objectDetailsModal"
+                                        class="mr-2"
+                                        style="cursor:pointer;"
+                                        title='{% trans "View" %}'
+                                    >
+                                        <ion-icon class="text-dark md hydrated" name="eye-outline" role="img" aria-label="view"></ion-icon>
+                                    </a>
                                     {% if request.user.is_authenticated and request.user.employee_get == req.employee_id %}
                                         {% if perms.payroll.change_reimbursement or request.user.employee_get == req.employee_id or req|can_approve:request.user.employee_get %}
                                             <a
@@ -505,45 +521,55 @@
                                 <input type="hidden" name="ids" value="{{ req.id }}" />
                                 <input type="hidden" name="status" />
                                 <input type="hidden" name="reject_reason" />
+
                                 {% if req.type == 'reimbursement' %}
-                                <p class="oh-faq-card__desc" style="height: 150px">
-                                    <iframe
-                                        id="iframe_pdf"
-                                        src="{{ req.attachment.url }}"
-                                        style="width: 100%"
-                                        frameborder="0"
-                                    ></iframe>
-                                </p>
+                                    <p class="oh-faq-card__desc" style="height: 150px">
+                                        <iframe
+                                            id="iframe_pdf"
+                                            src="{{ req.attachment.url }}"
+                                            style="width: 100%"
+                                            frameborder="0"
+                                        ></iframe>
+                                    </p>
                                 {% elif req.type == 'bonus_encashment' %}
-                                <p class="oh-faq-card__desc" style="max-height: 180px">
-                                    <i>
-                                        {% trans 'Requsted for' %}
-                                        <span class="text-danger">
-                                            {{ req.bonus_to_encash }}
-                                        </span>
-                                        {% trans 'Bonus points to encash.' %}
-                                    </i>
-                                    <input style="display: block;padding:
-                                    10px;margin-top: 10px;" type="number" required
-                                    default="0" min="0" placeholder="Amount"
-                                    name="amount" class="mt-2"{% if req.status == "approved" %}disabled{% endif %} {% if req.amount %}
-                                    value="{{req.amount}}"{% endif %} />
-                                </p>
-                                {% else %}
-                                <p class="oh-faq-card__desc" style="max-height: 180px">
-                                    <i>
-                                        {% trans 'Requsted for total' %}
-                                        <span class="text-danger">
-                                            {{ req.ad_to_encash|add:req.cfd_to_encash }}
-                                        </span>
-                                        {% trans 'days' %} {% trans 'days to encash.' %}
-                                    </i>
-                                    <input style="display: block;padding:
-                                    10px;margin-top: 10px;" type="number" required
-                                    default="0" min="0" placeholder="Amount"
-                                    name="amount" class="mt-2"{% if req.status == "approved" %}disabled{% endif %} {% if req.amount %}
-                                    value="{{req.amount}}"{% endif %} />
-                                </p>
+                                    <p class="oh-faq-card__desc" style="max-height: 180px">
+                                        <i>
+                                            {% trans 'Requsted for' %}
+                                            <span class="text-danger">{{ req.bonus_to_encash }}</span>
+                                            {% trans 'Bonus points to encash.' %}
+                                        </i>
+                                        <input style="display:block;padding:10px;margin-top:10px;" type="number" required default="0" min="0" placeholder="Amount"
+                                               name="amount" class="mt-2"{% if req.status == "approved" %}disabled{% endif %}
+                                               {% if req.amount %}value="{{ req.amount }}"{% endif %} />
+                                    </p>
+                                {% elif req.type == 'leave_encashment' %}
+                                    <p class="oh-faq-card__desc" style="max-height: 180px">
+                                        <i>
+                                            {% trans 'Requsted for total' %}
+                                            <span class="text-danger">{{ req.ad_to_encash|add:req.cfd_to_encash }}</span>
+                                            {% trans 'days' %} {% trans 'days to encash.' %}
+                                        </i>
+                                        <input style="display:block;padding:10px;margin-top:10px;" type="number" required default="0" min="0" placeholder="Amount"
+                                               name="amount" class="mt-2"{% if req.status == "approved" %}disabled{% endif %}
+                                               {% if req.amount %}value="{{ req.amount }}"{% endif %} />
+                                    </p>
+                                {% elif req.type == 'medical_encashment' %}
+                                    <p class="oh-faq-card__desc" style="max-height: 180px">
+                                        <i>
+                                            {% trans 'Total Claimed Amount' %}:
+                                            <span class="text-danger">{{ req.amount }}</span>
+                                        </i>
+                                        {# Always submit current amount; restrict editing to A&F approvers #}
+                                        {% with user_dept=request.user.employee_get.employee_work_info.department_id %}
+                                            {% if user_dept and user_dept.department == 'Accounts & Finance' and req|can_approve:request.user.employee_get %}
+                                                <input style="display:block;padding:10px;margin-top:10px;" type="number" min="0" placeholder="Amount"
+                                                       name="amount" class="mt-2" {% if req.status == "approved" %}disabled{% endif %}
+                                                       value="{{ req.amount }}" />
+                                            {% else %}
+                                                <input type="hidden" name="amount" value="{{ req.amount }}" />
+                                            {% endif %}
+                                        {% endwith %}
+                                    </p>
                                 {% endif %}
                                 <div class="oh-btn-group">
                                     <button

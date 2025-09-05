@@ -1855,6 +1855,21 @@ class Reimbursement(HorillaModel):
         pending = approvals.filter(is_approved=False, is_rejected=False).first()
         return pending and pending.manager_id == employee
 
+    def last_approved_department(self):
+        """Return department name of the latest approval (by sequence)."""
+        try:
+            approval = (
+                self.reimbursementconditionapproval_set.filter(is_approved=True)
+                .order_by("-sequence")
+                .first()
+            )
+            if not approval:
+                return None
+            dept = approval.manager_id.get_department()
+            return getattr(dept, "department", None) if dept else None
+        except Exception:
+            return None
+
 
 class ReimbursementConditionApproval(models.Model):
     sequence = models.IntegerField()

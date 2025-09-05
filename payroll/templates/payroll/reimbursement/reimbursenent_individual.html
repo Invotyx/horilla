@@ -173,13 +173,16 @@
                 <div class="oh-timeoff-modal__stat" style="margin-left: 20px;">
                     <span class="oh-timeoff-modal__stat-title">{% trans "Claim For" %}</span>
                     <span class="oh-timeoff-modal__stat-count">{{ reimbursement.claim_for|default:"-" }}</span>
-                </div>
-                {% if reimbursement.dependent_name %}
-                <div class="oh-timeoff-modal__stat" style="margin-left: 20px;">
+                                    {% if reimbursement.dependent_name %}
+                <div class="oh-timeoff-modal__stat" style=" mt-4 margin-left: 20px;">
                     <span class="oh-timeoff-modal__stat-title">{% trans "Dependent Name" %}</span>
                     <span class="oh-timeoff-modal__stat-count">{{ reimbursement.dependent_name }}</span>
                 </div>
                 {% endif %}
+                </div>
+
+
+
             </div>
             <div class="oh-timeoff-modal__stats-container mb-3">
                 <div class="oh-timeoff-modal__stat">

@@ -1858,6 +1858,10 @@ def approve_reimbursements(request):
     current_emp = request.user.employee_get
     if status and len(status):
         for reimbursement in reimbursements:
+            # Disallow any changes once closed
+            if reimbursement.status == "closed":
+                messages.error(request, _("This request is closed and cannot be changed."))
+                continue
             # Update amount for non-medical types immediately
             if reimbursement.type == "leave_encashment":
                 reimbursement.amount = amount
@@ -1871,6 +1875,27 @@ def approve_reimbursements(request):
             if (
                 reimbursement.type == "medical_encashment" and approvals.exists()
             ):
+                if status == "closed":
+                    dept = current_emp.get_department()
+                    if (
+                        reimbursement.status == "approved"
+                        and dept
+                        and getattr(dept, "department", None) == "Accounts & Finance"
+                        and reimbursement.last_approved_department()
+                        == "Accounts & Finance"
+                    ):
+                        reimbursement.status = "closed"
+                        reimbursement.save()
+                        messages.success(
+                            request,
+                            _(f"Request {reimbursement.get_status_display()} successfully"),
+                        )
+                    else:
+                        messages.error(
+                            request,
+                            _("You are not authorized to close this request"),
+                        )
+                    continue
                 approval = approvals.filter(
                     manager_id=current_emp,
                     is_approved=False,

@@ -1592,6 +1592,7 @@ class Reimbursement(HorillaModel):
         ("requested", _("Requested")),
         ("approved", _("Approved")),
         ("rejected", _("Rejected")),
+        ("closed", _("Closed")),
     ]
     # Medical claim specific fields
     CLAIM_FOR_CHOICES = [

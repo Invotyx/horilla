@@ -76,6 +76,7 @@
                                         style="display: inline;
                                         {% if req.status == "approved" %}background:#9acd3245; {% elif req.status == "rejected" %}
                                         background:#ff45002e;{% endif %}">
+
                                         {% with progress=req.approval_progress %}
                                             {% if req.status == 'rejected' and req.rejected_by_department %}
                                                 Rejected by {{ req.rejected_by_department }}
@@ -389,6 +390,7 @@
                                         style="display: inline;
                                         {% if req.status == "approved" %}background:#9acd3245; {% elif req.status == "rejected" %}
                                         background:#ff45002e;{% endif %}">
+
                                         {% with progress=req.approval_progress %}
                                             {% if req.status == 'rejected' and req.rejected_by_department %}
                                                 Rejected by {{ req.rejected_by_department }}

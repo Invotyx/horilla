@@ -172,6 +172,7 @@
                                         {{req.amount}}
                                         </div>
                                         <div data-cell-index="4" class="oh-sticky-table__td">
+
                                         {% with progress=req.approval_progress %}
                                             {% if req.status == 'rejected' and req.rejected_by_department %}
                                                 Rejected by {{ req.rejected_by_department }}
@@ -531,6 +532,7 @@
                                                 {{req.cfd_to_encash}}
                                             </div>
                                             <div data-cell-index="17" class="oh-sticky-table__td">
+
                                                 {% with progress=req.approval_progress %}
                                                     {% if req.status == 'rejected' and req.rejected_by_department %}
                                                         Rejected by {{ req.rejected_by_department }}
@@ -877,6 +879,7 @@
                                                 {{req.bonus_to_encash}}
                                             </div>
                                             <div data-cell-index="25" class="oh-sticky-table__td">
+
                                             {% with progress=req.approval_progress %}
                                                 {% if req.status == 'rejected' and req.rejected_by_department %}
                                                     Rejected by {{ req.rejected_by_department }}
@@ -886,6 +889,7 @@
                                                     {{ req.get_status_display }}{% if progress.1 %} ({{ progress.0 }}/{{ progress.1 }} {% trans "approved" %}){% endif %}
                                                 {% endif %}
                                             {% endwith %}
+
                                             </div>
                                             <div data-cell-index="26" class="oh-sticky-table__td">
                                                 {{req.description}}

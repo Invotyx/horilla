@@ -172,14 +172,13 @@
                                         {{req.amount}}
                                         </div>
                                         <div data-cell-index="4" class="oh-sticky-table__td">
-                                        {% if req.status == 'rejected' and req.rejected_by_department %}
-                                            Rejected by {{ req.rejected_by_department }}
-                                        {% else %}
-                                            {{req.get_status_display}}
-                                        {% endif %}
                                         {% with progress=req.approval_progress %}
-                                            {% if progress.1 %}
-                                                ({{ progress.0 }}/{{ progress.1 }} {% trans "approved" %})
+                                            {% if req.status == 'rejected' and req.rejected_by_department %}
+                                                Rejected by {{ req.rejected_by_department }}
+                                            {% elif progress.1 and progress.0 and progress.0 < progress.1 %}
+                                                Approved by {{ req.last_approved_department }} ({{ progress.0 }}/{{ progress.1 }} {% trans "approved" %})
+                                            {% else %}
+                                                {{ req.get_status_display }}{% if progress.1 %} ({{ progress.0 }}/{{ progress.1 }} {% trans "approved" %}){% endif %}
                                             {% endif %}
                                         {% endwith %}
                                         </div>
@@ -195,7 +194,17 @@
                                             {% endif %}
                                         </div>
                                         <div class="oh-sticky-table__td" onclick="event.stopPropagation()">
-                                            <div class="oh-btn-group"  >
+                                            <div class="oh-btn-group">
+                                                <a
+                                                    hx-get="{% url 'reimbursement-individual-view' req.id %}?instances_ids={{reimbursements_ids}}"
+                                                    hx-target="#objectDetailsModalTarget"
+                                                    data-toggle="oh-modal-toggle"
+                                                    data-target="#objectDetailsModal"
+                                                    class="oh-btn oh-btn--light-bkg w-100"
+                                                    title="{% trans 'View' %}"
+                                                >
+                                                    <ion-icon name="eye-outline"></ion-icon>
+                                                </a>
                                                 {% if perms.payroll.change_reimbursement or request.user == req.employee_id.employee_user_id or req|can_approve:request.user.employee_get %}
                                                     {% if req.status == 'requested' %}
                                                         <a
@@ -522,14 +531,13 @@
                                                 {{req.cfd_to_encash}}
                                             </div>
                                             <div data-cell-index="17" class="oh-sticky-table__td">
-                                                {% if req.status == 'rejected' and req.rejected_by_department %}
-                                                    Rejected by {{ req.rejected_by_department }}
-                                                {% else %}
-                                                    {{req.get_status_display}}
-                                                {% endif %}
                                                 {% with progress=req.approval_progress %}
-                                                    {% if progress.1 %}
-                                                        ({{ progress.0 }}/{{ progress.1 }} {% trans "approved" %})
+                                                    {% if req.status == 'rejected' and req.rejected_by_department %}
+                                                        Rejected by {{ req.rejected_by_department }}
+                                                    {% elif progress.1 and progress.0 and progress.0 < progress.1 %}
+                                                        Approved by {{ req.last_approved_department }} ({{ progress.0 }}/{{ progress.1 }} {% trans "approved" %})
+                                                    {% else %}
+                                                        {{ req.get_status_display }}{% if progress.1 %} ({{ progress.0 }}/{{ progress.1 }} {% trans "approved" %}){% endif %}
                                                     {% endif %}
                                                 {% endwith %}
                                             </div>
@@ -547,6 +555,16 @@
 
                                             <div class="oh-sticky-table__td" onclick="event.stopPropagation()" >
                                                 <div class="oh-btn-group" onclick="event.stopPropagation()">
+                                                    <a
+                                                        hx-get="{% url 'reimbursement-individual-view' req.id %}?instances_ids={{leave_encashments_ids}}"
+                                                        hx-target="#objectDetailsModalTarget"
+                                                        data-toggle="oh-modal-toggle"
+                                                        data-target="#objectDetailsModal"
+                                                        class="oh-btn oh-btn--light-bkg w-100"
+                                                        title="{% trans 'View' %}"
+                                                    >
+                                                        <ion-icon name="eye-outline"></ion-icon>
+                                                    </a>
                                                     {% if perms.payroll.change_reimbursement or request.user == req.employee_id.employee_user_id or req|can_approve:request.user.employee_get %}
                                                         {% if req.status == 'requested' %}
                                                             <a
@@ -859,16 +877,15 @@
                                                 {{req.bonus_to_encash}}
                                             </div>
                                             <div data-cell-index="25" class="oh-sticky-table__td">
+                                            {% with progress=req.approval_progress %}
                                                 {% if req.status == 'rejected' and req.rejected_by_department %}
                                                     Rejected by {{ req.rejected_by_department }}
+                                                {% elif progress.1 and progress.0 and progress.0 < progress.1 %}
+                                                    Approved by {{ req.last_approved_department }} ({{ progress.0 }}/{{ progress.1 }} {% trans "approved" %})
                                                 {% else %}
-                                                    {{req.get_status_display}}
+                                                    {{ req.get_status_display }}{% if progress.1 %} ({{ progress.0 }}/{{ progress.1 }} {% trans "approved" %}){% endif %}
                                                 {% endif %}
-                                                {% with progress=req.approval_progress %}
-                                                    {% if progress.1 %}
-                                                        ({{ progress.0 }}/{{ progress.1 }} {% trans "approved" %})
-                                                    {% endif %}
-                                                {% endwith %}
+                                            {% endwith %}
                                             </div>
                                             <div data-cell-index="26" class="oh-sticky-table__td">
                                                 {{req.description}}
@@ -883,6 +900,16 @@
                                             </div>
                                             <div onclick="event.stopPropagation()" class="oh-sticky-table__td">
                                                 <div class="oh-btn-group">
+                                                    <a
+                                                        hx-get="{% url 'reimbursement-individual-view' req.id %}?instances_ids={{bonus_encashment_ids}}"
+                                                        hx-target="#objectDetailsModalTarget"
+                                                        data-toggle="oh-modal-toggle"
+                                                        data-target="#objectDetailsModal"
+                                                        class="oh-btn oh-btn--light-bkg"
+                                                        title="{% trans 'View' %}"
+                                                    >
+                                                        <ion-icon name="eye-outline"></ion-icon>
+                                                    </a>
                                                     {% if perms.payroll.change_reimbursement or request.user == req.employee_id.employee_user_id or req|can_approve:request.user.employee_get %}
                                                         {% if req.status == 'requested' %}
                                                             <a
@@ -1130,22 +1157,40 @@
                                                 <div class="oh-sticky-table__td dateformat_changer">{{ claim.created_at|date:"F j, Y" }}</div>
                                                 <div class="oh-sticky-table__td">{{ claim.amount }}</div>
                                                     <div class="oh-sticky-table__td ">
-                                                        <span class="badge 
-                                                            {% if claim.status == 'approved' %}bg-success
-                                                            {% elif claim.status == 'requested' %}bg-warning text-dark
-                                                            {% elif claim.status == 'rejected' %}bg-danger
-                                                            {% endif %}">
-                                                            {{ claim.status|title }}
-                                                        </span>
+                                                        {% with progress=claim.approval_progress %}
+                                                            {% if claim.status == 'rejected' and claim.rejected_by_department %}
+                                                                <span class="badge bg-danger">Rejected by {{ claim.rejected_by_department }}</span>
+                                                            {% elif progress.1 and progress.0 and progress.0 < progress.1 %}
+                                                                <span class="badge bg-warning text-dark">Approved by {{ claim.last_approved_department }} ({{ progress.0 }}/{{ progress.1 }} {% trans "approved" %})</span>
+                                                            {% else %}
+                                                                <span class="badge 
+                                                                    {% if claim.status == 'approved' %}bg-success
+                                                                    {% elif claim.status == 'requested' %}bg-warning text-dark
+                                                                    {% elif claim.status == 'rejected' %}bg-danger
+                                                                    {% endif %}">
+                                                                    {{ claim.status|title }}{% if progress.1 %} ({{ progress.0 }}/{{ progress.1 }} {% trans "approved" %}){% endif %}
+                                                                </span>
+                                                            {% endif %}
+                                                        {% endwith %}
                                                     </div>
 
                                                 <div class="oh-sticky-table__td">
-                                                    <div class="oh-btn-group">
-                                                        
-                                                         {% if request.user.is_authenticated and request.user.employee_get == claim.employee_id and claim.status != 'approved' %}
-                                                            <a hx-get="{% url 'create-reimbursement' %}?instance_id={{ claim.id }}" 
-                                                            hx-target="#objectCreateModalTarget" 
-                                                            data-toggle="oh-modal-toggle" 
+                                                <div class="oh-btn-group">
+                                                    <a
+                                                        hx-get="{% url 'reimbursement-individual-view' claim.id %}"
+                                                        hx-target="#objectDetailsModalTarget"
+                                                        data-toggle="oh-modal-toggle"
+                                                        data-target="#objectDetailsModal"
+                                                        class="oh-btn oh-btn--light-bkg"
+                                                        title="{% trans 'View' %}"
+                                                    >
+                                                        <ion-icon name="eye-outline"></ion-icon>
+                                                    </a>
+                                                    
+                                                    {% if request.user.is_authenticated and request.user.employee_get == claim.employee_id and claim.status != 'approved' %}
+                                                        <a hx-get="{% url 'create-reimbursement' %}?instance_id={{ claim.id }}" 
+                                                        hx-target="#objectCreateModalTarget" 
+                                                        data-toggle="oh-modal-toggle" 
                                                             data-target="#objectCreateModal" 
                                                             class="oh-btn oh-btn--light-bkg" 
                                                             title="{% trans 'Edit' %}">

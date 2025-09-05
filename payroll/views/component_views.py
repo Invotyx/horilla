@@ -1858,9 +1858,8 @@ def approve_reimbursements(request):
     current_emp = request.user.employee_get
     if status and len(status):
         for reimbursement in reimbursements:
+            # Update amount for non-medical types immediately
             if reimbursement.type == "leave_encashment":
-                reimbursement.amount = amount
-            if reimbursement.type == "medical_encashment":
                 reimbursement.amount = amount
             elif reimbursement.type == "bonus_encashment":
                 reimbursement.amount = amount
@@ -1890,6 +1889,10 @@ def approve_reimbursements(request):
                     messages.error(request, _("Previous approvals are pending"))
                     continue
                 if status == "approved":
+                    # For medical claims, only Accounts & Finance approvers can edit amount
+                    dept = current_emp.get_department()
+                    if dept and getattr(dept, "department", None) == "Accounts & Finance":
+                        reimbursement.amount = amount
                     approved_claims_total = (
                         Reimbursement.objects.filter(
                             employee_id=emp,
@@ -2071,6 +2074,9 @@ def reimbursement_individual_view(request, instance_id):
     """
     reimbursement = Reimbursement.objects.get(id=instance_id)
     requests_ids_json = request.GET.get("instances_ids")
+    # Default navigation ids to None to avoid UnboundLocalError when not provided
+    previous_id = None
+    next_id = None
     if requests_ids_json:
         requests_ids = json.loads(requests_ids_json)
         previous_id, next_id = closest_numbers(requests_ids, instance_id)

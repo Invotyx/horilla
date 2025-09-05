@@ -1,6 +1,14 @@
 {% load i18n %}
 
 
+<style>
+  #objectDetailsModalTarget .oh-modal__dialog-body {
+    width: 900px !important;
+    max-width: 95% !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+  }
+</style>
 
 <div class="oh-modal__dialog-header">
     <span
@@ -164,6 +172,13 @@
             </div>
             <!-- end of leave encashment details -->
         {% elif reimbursement.type == 'medical_encashment' %}
+        <style>
+    /* Override modal width specifically for medical reimbursement */
+    .oh-modal__dialog {
+        max-width: 1200px !important;
+        width: 90% !important;
+    }
+</style>
             <!-- start of medical reimbursement details (read-only) -->
             <div class="oh-timeoff-modal__stats-container mb-3">
                 <div class="oh-timeoff-modal__stat">

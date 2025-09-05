@@ -33,3 +33,12 @@
 // 7. Overrides
 @import "overrides/datepicker", "overrides/fullcalendar", "overrides/responsive",
   "overrides/summernote";
+
+// Medical reimbursement modal width override
+.oh-modal.oh-modal--medical {
+  .oh-modal__dialog{
+    max-width: 1400px !important;
+    width: min(98vw, 1400px) !important;
+  }
+}
+

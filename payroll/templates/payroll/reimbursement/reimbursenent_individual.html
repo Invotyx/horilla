@@ -1,4 +1,20 @@
 {% load i18n %}
+<script>
+  (function(){
+    try{
+      var root = document.getElementById('objectDetailsModal') || document.querySelector('.oh-modal');
+      if(root){
+        // Mark this modal as medical-specific to allow targeted CSS width overrides
+        root.classList.add('oh-modal--medical');
+        // Clean up on close to avoid leaking the class
+        var closeBtn = document.querySelector('.oh-modal__close');
+        if (closeBtn){
+          closeBtn.addEventListener('click', function(){ root.classList.remove('oh-modal--medical'); });
+        }
+      }
+    }catch(e){}
+  })();
+ </script>
 
 
 

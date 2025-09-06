@@ -1245,7 +1245,7 @@
                                                         {% if user_dept and user_dept.department == 'Accounts & Finance' %}
                                                         <a
                                                             href="{{ claim.attachment.url }}"
-                                                            class="oh-btn oh-btn--light"
+                                                            class="oh-btn oh-btn--warning"
                                                             title="{% trans 'Print' %}"
                                                             onclick="event.stopPropagation(); event.preventDefault(); return reimbursementPrint(this.href);"
                                                         >

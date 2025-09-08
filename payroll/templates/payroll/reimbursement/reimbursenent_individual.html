@@ -284,16 +284,15 @@
                         >
                             <ion-icon name="checkmark-done-circle-outline"></ion-icon>
                         </a>
-                        {% if reimbursement.attachment %}
                         <a
-                            href="{{ reimbursement.attachment.url }}"
+                            href="{% url 'reimbursement-print' reimbursement.id %}"
                             class="oh-btn oh-btn--warning w-25"
                             title="{% trans 'Print' %}"
-                            onclick="event.preventDefault(); return reimbursementPrint(this.href);"
+                            onclick="event.stopPropagation();"
+                            target="_blank"
                         >
                             <ion-icon name="print-outline"></ion-icon>
                         </a>
-                        {% endif %}
                     {% endif %}
                 {% endif %}
                 {% endwith %}

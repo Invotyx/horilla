@@ -1225,6 +1225,30 @@ class ReimbursementForm(ModelForm):
 
         instance = super().save(commit=commit)
 
+        # Persist medical changes even when approved (model.save may skip on approved+allowance)
+        try:
+            if (
+                instance.type == "medical_encashment"
+                and instance.status == "approved"
+                and getattr(instance, "allowance_id_id", None)
+            ):
+                update_fields = {}
+                for field in [
+                    "medical_expenses",
+                    "amount",
+                    "claim_for",
+                    "dependent_name",
+                    "title",
+                    "description",
+                ]:
+                    if field in self.fields:
+                        update_fields[field] = getattr(self.instance, field, None)
+                if update_fields:
+                    Reimbursement.objects.filter(id=instance.id).update(**update_fields)
+        except Exception:
+            # avoid blocking save on update fallback
+            pass
+
         if attachments:
             # Store any additional files as separate attachments
             additional_files = attachments[1:]

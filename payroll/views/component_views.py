@@ -2093,6 +2093,38 @@ def delete_reimbursements(request):
 
 @login_required
 @owner_can_enter("payroll.view_reimbursement", Reimbursement, True)
+def print_medical_reimbursement(request, instance_id):
+    """Render a printable medical reimbursement form for a specific claim."""
+    reimbursement = Reimbursement.objects.get(id=instance_id)
+    if reimbursement.type != "medical_encashment":
+        messages.error(request, _("Printing is only available for medical claims."))
+        return redirect(view_reimbursement)
+    # Normalize expenses to safe keys for template rendering
+    items = []
+    total = 0
+    try:
+        expenses = reimbursement.medical_expenses or []
+        for e in expenses:
+            # e is expected to be a dict
+            desc = (
+                (e.get("description") or e.get("expense_type") or e.get("provider") or e.get("name") or "-")
+            )
+            amt_raw = e.get("expense_amount")
+            if amt_raw is None:
+                amt_raw = e.get("amount")
+            try:
+                amt = float(amt_raw) if amt_raw is not None else 0.0
+            except (ValueError, TypeError):
+                amt = 0.0
+            total += amt
+            items.append({"desc": desc, "amt": amt, "raw": e})
+    except Exception:
+        items = []
+    return render(
+        request,
+        "payroll/reimbursement/medical_print.html",
+        {"reimbursement": reimbursement, "items": items, "items_total": total},
+    )
 def reimbursement_individual_view(request, instance_id):
     """
     This method is used to render the individual view of reimbursement object

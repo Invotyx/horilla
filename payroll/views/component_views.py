@@ -2106,23 +2106,27 @@ def delete_reimbursements(request):
             continue
         reimbursement.delete()
         deleted += 1
+        recipient = (
+            reimbursement.employee_id.employee_user_id
+            if reimbursement.employee_id and reimbursement.employee_id.employee_user_id
+            else None
+        )
+        if recipient:
+            notify.send(
+                request.user.employee_get,
+                recipient=recipient,
+                verb="Your reimbursement request has been deleted.",
+                verb_ar="تم حذف طلب استرداد نفقاتك.",
+                verb_de="Ihr Rückerstattungsantrag wurde gelöscht.",
+                verb_es="Tu solicitud de reembolso ha sido eliminada.",
+                verb_fr="Votre demande de remboursement a été supprimée.",
+                redirect="/",
+                icon="trash",
+            )
     if deleted:
         messages.success(request, _("Reimbursements deleted"))
     if blocked:
-
         messages.error(request, _("Some claims cannot be deleted."))
-
-    notify.send(
-        request.user.employee_get,
-        recipient=user,
-        verb="Your reimbursement request has been deleted.",
-        verb_ar="تم حذف طلب استرداد نفقاتك.",
-        verb_de="Ihr Rückerstattungsantrag wurde gelöscht.",
-        verb_es="Tu solicitud de reembolso ha sido eliminada.",
-        verb_fr="Votre demande de remboursement a été supprimée.",
-        redirect="/",
-        icon="trash",
-    )
 
     return redirect(view_reimbursement)
 

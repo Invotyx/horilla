@@ -2084,6 +2084,7 @@ def delete_reimbursements(request):
     deleted = 0
     blocked = 0
     for reimbursement in reimbursements:
+
         is_owner = (
             request.user.is_authenticated
             and reimbursement.employee_id
@@ -2094,6 +2095,7 @@ def delete_reimbursements(request):
         if not (allowed_by_owner or allowed_by_perm or request.user.is_superuser):
             blocked += 1
             continue
+
         if (
             reimbursement.type == "medical_encashment"
             and hasattr(reimbursement, "is_locked")
@@ -2107,7 +2109,9 @@ def delete_reimbursements(request):
     if deleted:
         messages.success(request, _("Reimbursements deleted"))
     if blocked:
+
         messages.error(request, _("Some claims cannot be deleted."))
+
     notify.send(
         request.user.employee_get,
         recipient=user,

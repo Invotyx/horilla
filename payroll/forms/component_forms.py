@@ -1258,6 +1258,7 @@ class ReimbursementForm(ModelForm):
 
         instance = super().save(commit=commit)
 
+
         # Apply removal after instance is saved/available
         try:
             if remove_primary and instance.attachment:
@@ -1273,6 +1274,7 @@ class ReimbursementForm(ModelForm):
                     obj.delete()
         except Exception:
             pass
+
 
         # Persist medical changes even when approved (model.save may skip on approved+allowance)
         try:

@@ -1847,6 +1847,17 @@ class Reimbursement(HorillaModel):
     def __str__(self):
         return f"{self.title}"
 
+    def is_locked(self):
+        """Medical claim becomes read-only after any approval by managers or when approved/closed."""
+        try:
+            if self.type != "medical_encashment":
+                return False
+            if self.status in ("approved", "closed"):
+                return True
+            return self.reimbursementconditionapproval_set.filter(is_approved=True).exists()
+        except Exception:
+            return False
+
     def approval_progress(self):
         approvals = self.reimbursementconditionapproval_set.all()
         return approvals.filter(is_approved=True).count(), approvals.count()

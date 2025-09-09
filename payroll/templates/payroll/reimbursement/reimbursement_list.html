@@ -216,34 +216,39 @@
                                                 >
                                                     <ion-icon name="eye-outline"></ion-icon>
                                                 </a>
-                                                {% if perms.payroll.change_reimbursement or request.user == req.employee_id.employee_user_id or req|can_approve:request.user.employee_get %}
-                                                    {% if req.status == 'requested' %}
-                                                        <a
-                                                            onclick="event.stopPropagation()"
-                                                            hx-get="{% url 'create-reimbursement' %}?instance_id={{ req.id }}"
-                                                            hx-target="#objectCreateModalTarget"
-                                                            data-toggle="oh-modal-toggle"
-                                                            data-target="#objectCreateModal"
-                                                            class="oh-btn oh-btn--light-bkg w-100"
-                                                            title="{% trans 'Edit' %}"
-                                                        >
-                                                        <ion-icon name="create-outline"></ion-icon>
-                                                        </a>
-                                                    {% else %}
-                                                        <button
-                                                            class="oh-btn oh-btn--light-bkg w-100"
-                                                            disabled
-                                                        >
+                                              {% if perms.payroll.change_reimbursement or request.user == req.employee_id.employee_user_id or req|can_approve:request.user.employee_get %}
+                                                    {% if req.type != 'medical_encashment' or not req.is_locked or request.user.is_superuser %}
+                                                        {% if req.status == 'requested' %}
+                                                            <a
+                                                                onclick="event.stopPropagation()"
+                                                                hx-get="{% url 'create-reimbursement' %}?instance_id={{ req.id }}"
+                                                                hx-target="#objectCreateModalTarget"
+                                                                data-toggle="oh-modal-toggle"
+                                                                data-target="#objectCreateModal"
+                                                                class="oh-btn oh-btn--light-bkg w-100"
+                                                                title="{% trans 'Edit' %}"
+                                                            >
                                                             <ion-icon name="create-outline"></ion-icon>
-                                                        </button>
+                                                            </a>
+                                                        {% else %}
+                                                            <button
+                                                                class="oh-btn oh-btn--light-bkg w-100"
+                                                                disabled
+                                                            >
+                                                                <ion-icon name="create-outline"></ion-icon>
+                                                            </button>
+                                                        {% endif %}
                                                     {% endif %}
                                                 {% endif %}
                                                 {% if perms.payroll.delete_reimbursement %}
-                                                    <a href="{% url "delete-reimbursement" %}?ids={{req.id}}" onclick="event.stopPropagation();return confirm('Do you want to delete this record?')"
-                                                        class='w-100 oh-btn oh-btn--danger-outline oh-btn--light-bkg' title='{% trans "Delete" %}'>
-
-                                                        <ion-icon name="trash-outline"></ion-icon>
-                                                    </a>
+                                                    {% if req.type == 'medical_encashment' and req.is_locked and not request.user.is_superuser %}
+                                                        {# locked: do not render delete #}
+                                                    {% else %}
+                                                        <a href="{% url "delete-reimbursement" %}?ids={{req.id}}" onclick="event.stopPropagation();return confirm('Do you want to delete this record?')"
+                                                            class='w-100 oh-btn oh-btn--danger-outline oh-btn--light-bkg' title='{% trans "Delete" %}'>
+                                                            <ion-icon name="trash-outline"></ion-icon>
+                                                        </a>
+                                                    {% endif %}
                                                 {% endif %}
                                             </div>
                                         </div>
@@ -1200,17 +1205,25 @@
                                                     </a>
 
                                                     {% if request.user.is_authenticated and request.user.employee_get == claim.employee_id and claim.status != 'approved' %}
-                                                        <a hx-get="{% url 'create-reimbursement' %}?instance_id={{ claim.id }}"
-                                                        hx-target="#objectCreateModalTarget"
-                                                        data-toggle="oh-modal-toggle"
-                                                            data-target="#objectCreateModal"
-                                                            class="oh-btn oh-btn--light-bkg"
-                                                            title="{% trans 'Edit' %}">
-                                                            <ion-icon name="create-outline"></ion-icon>
-                                                            </a>
+                                                        {% if claim.type == 'medical_encashment' and claim.is_locked and not request.user.is_superuser %}
+                                                            {# locked: do not render edit #}
+                                                        {% else %}
+                                                            <a hx-get="{% url 'create-reimbursement' %}?instance_id={{ claim.id }}"
+                                                            hx-target="#objectCreateModalTarget"
+                                                            data-toggle="oh-modal-toggle"
+                                                                data-target="#objectCreateModal"
+                                                                class="oh-btn oh-btn--light-bkg"
+                                                                title="{% trans 'Edit' %}">
+                                                                <ion-icon name="create-outline"></ion-icon>
+                                                                </a>
                                                         {% endif %}
+                                                    {% endif %}
 
-                                                    <a href="{% url 'delete-reimbursement' %}?ids={{claim.id}}" onclick="event.stopPropagation();return confirm('Do you want to delete this record?')" class="oh-btn oh-btn--danger-outline oh-btn--light-bkg" title="{% trans 'Delete' %}"><ion-icon name="trash-outline"></ion-icon></a>
+                                                    {% if claim.type == 'medical_encashment' and claim.is_locked and not request.user.is_superuser %}
+                                                        {# locked: no delete #}
+                                                    {% else %}
+                                                        <a href="{% url 'delete-reimbursement' %}?ids={{claim.id}}" onclick="event.stopPropagation();return confirm('Do you want to delete this record?')" class="oh-btn oh-btn--danger-outline oh-btn--light-bkg" title="{% trans 'Delete' %}"><ion-icon name="trash-outline"></ion-icon></a>
+                                                    {% endif %}
                                                 </div>
                                                 {% with user_dept=request.user.employee_get.employee_work_info.department_id %}
                                                 {% if claim|can_approve:request.user.employee_get or user_dept and claim.status == 'approved' and user_dept.department == 'Accounts & Finance' and claim.last_approved_department == 'Accounts & Finance' %}

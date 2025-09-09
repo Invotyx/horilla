@@ -1655,6 +1655,11 @@ def create_reimbursement(request):
         instance = Reimbursement.objects.filter(id=instance_id).first()
 
     if request.method == "POST":
+        # Block edits when medical claim is locked (any approval or approved/closed), except superuser
+        if instance and instance.type == "medical_encashment" and hasattr(instance, "is_locked"):
+            if instance.is_locked() and not request.user.is_superuser:
+                messages.error(request, _("Editing is locked for this medical claim."))
+                return HttpResponse(status=204, headers={"HX-Refresh": "true"})
         form = forms.ReimbursementForm(request.POST, request.FILES, instance=instance)
         if form.is_valid():
             instance, attachments = form.save()
@@ -1668,6 +1673,11 @@ def create_reimbursement(request):
         _t = request.GET.get('type')
         if _t:
             initial['type'] = _t
+        # Block opening edit form if locked
+        if instance and instance.type == "medical_encashment" and hasattr(instance, "is_locked"):
+            if instance.is_locked() and not request.user.is_superuser:
+                messages.error(request, _("Editing is locked for this medical claim."))
+                return HttpResponse(status=204, headers={"HX-Refresh": "true"})
         form = forms.ReimbursementForm(instance=instance, initial=initial)
 
     return render(request, "payroll/reimbursement/form.html", {"form": form})
@@ -2072,10 +2082,23 @@ def delete_reimbursements(request):
     """
     ids = request.GET.getlist("ids")
     reimbursements = Reimbursement.objects.filter(id__in=ids)
+    deleted = 0
+    blocked = 0
     for reimbursement in reimbursements:
-        user = reimbursement.employee_id.employee_user_id
-    reimbursements.delete()
-    messages.success(request, "Reimbursements deleted")
+        if (
+            reimbursement.type == "medical_encashment"
+            and hasattr(reimbursement, "is_locked")
+            and reimbursement.is_locked()
+            and not request.user.is_superuser
+        ):
+            blocked += 1
+            continue
+        reimbursement.delete()
+        deleted += 1
+    if deleted:
+        messages.success(request, _("Reimbursements deleted"))
+    if blocked:
+        messages.error(request, _("Some medical claims are locked and cannot be deleted."))
     notify.send(
         request.user.employee_get,
         recipient=user,

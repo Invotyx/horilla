@@ -511,16 +511,22 @@
                                     {% endif %}
                                     {% endwith %}
 
-                                    {% if perms.payroll.delete_reimbursement  %}
-                                    <a href="{% url "delete-reimbursement" %}?ids={{req.id}}" onclick="return confirm('Do you want to delete this record?')"
-                                        title='{% trans "Delete" %}'
-                                        ><ion-icon
-                                            class="text-danger md hydrated"
-                                            name="trash-outline"
-                                            role="img"
-                                            aria-label="trash outline"
-                                        ></ion-icon
-                                    ></a>
+                                    {% if perms.payroll.delete_reimbursement or request.user == req.employee_id.employee_user_id %}
+                                        {% if req.type == 'medical_encashment' and req.is_locked and not request.user.is_superuser %}
+                                            {# locked: do not render delete #}
+                                        {% elif req.status != 'requested' and not perms.payroll.delete_reimbursement %}
+                                            {# only owners of requested can delete without perm #}
+                                        {% else %}
+                                        <a href="{% url "delete-reimbursement" %}?ids={{req.id}}" onclick="return confirm('Do you want to delete this record?')"
+                                            title='{% trans "Delete" %}'>
+                                            <ion-icon
+                                                class="text-danger md hydrated"
+                                                name="trash-outline"
+                                                role="img"
+                                                aria-label="trash outline"
+                                            ></ion-icon>
+                                        </a>
+                                        {% endif %}
                                     {% endif %}
                                 </div>
 
@@ -852,16 +858,20 @@
                                     {% endif %}
                                     {% endwith %}
 
-                                    {% if perms.payroll.delete_reimbursement  %}
-                                    <a href="{% url "delete-reimbursement" %}?ids={{req.id}}" onclick="return confirm('Do you want to delete this record?')"
-                                        title='{% trans "Delete" %}'
-                                        ><ion-icon
-                                            class="text-danger md hydrated"
-                                            name="trash-outline"
-                                            role="img"
-                                            aria-label="trash outline"
-                                        ></ion-icon
-                                    ></a>
+                                    {% if perms.payroll.delete_reimbursement or request.user == req.employee_id.employee_user_id %}
+                                        {% if req.type == 'medical_encashment' and req.is_locked and not request.user.is_superuser %}
+                                        {% elif req.status != 'requested' and not perms.payroll.delete_reimbursement %}
+                                        {% else %}
+                                        <a href="{% url "delete-reimbursement" %}?ids={{req.id}}" onclick="return confirm('Do you want to delete this record?')"
+                                            title='{% trans "Delete" %}'>
+                                            <ion-icon
+                                                class="text-danger md hydrated"
+                                                name="trash-outline"
+                                                role="img"
+                                                aria-label="trash outline"
+                                            ></ion-icon>
+                                        </a>
+                                        {% endif %}
                                     {% endif %}
                                 </div>
                             </div>
@@ -1153,15 +1163,19 @@
                                             ></a>
                                         {% endif %}
                                     {% endif %}
-                                    {% if perms.payroll.delete_reimbursement  %}
-                                    <a href="{% url "delete-reimbursement" %}?ids={{req.id}}" onclick="return confirm('Do you want to delete this record?')"
-                                        title='{% trans "Delete" %}'><ion-icon
-                                            class="text-danger md hydrated"
-                                            name="trash-outline"
-                                            role="img"
-                                            aria-label="trash outline"
-                                        ></ion-icon
-                                    ></a>
+                                    {% if perms.payroll.delete_reimbursement or request.user == req.employee_id.employee_user_id %}
+                                        {% if req.type == 'medical_encashment' and req.is_locked and not request.user.is_superuser %}
+                                        {% elif req.status != 'requested' and not perms.payroll.delete_reimbursement %}
+                                        {% else %}
+                                        <a href="{% url "delete-reimbursement" %}?ids={{req.id}}" onclick="return confirm('Do you want to delete this record?')"
+                                            title='{% trans "Delete" %}'><ion-icon
+                                                class="text-danger md hydrated"
+                                                name="trash-outline"
+                                                role="img"
+                                                aria-label="trash outline"
+                                            ></ion-icon>
+                                        </a>
+                                        {% endif %}
                                     {% endif %}
                                 </div>
                             </div>

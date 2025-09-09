@@ -986,15 +986,21 @@ class ReimbursementForm(ModelForm):
     def clean(self):
         cleaned_data = super().clean()
 
-        type_ = cleaned_data.get("type") or (
-            self.instance.type if self.instance else None
+        # Resolve type and employee robustly so create works for normal users
+        type_ = (
+            cleaned_data.get("type")
+            or (self.data.get("type") if getattr(self, "data", None) else None)
+            or self.initial.get("type")
+            or (self.instance.type if self.instance else None)
         )
-        employee = cleaned_data.get("employee_id")
+        employee = cleaned_data.get("employee_id") or getattr(self, "employee", None)
         if not employee and self.instance:
             try:
                 employee = self.instance.employee_id
             except ObjectDoesNotExist:
                 employee = None
+        if employee and not cleaned_data.get("employee_id"):
+            cleaned_data["employee_id"] = employee
         amount = cleaned_data.get("amount")
 
         if not type_ or not employee:
@@ -1236,6 +1242,19 @@ class ReimbursementForm(ModelForm):
         if attachments:
             # Save the first file as the primary attachment
             self.instance.attachment = attachments[0]
+
+        # Ensure medical fields are explicitly set on instance before save
+        try:
+            if self.cleaned_data.get("medical_expenses") is not None:
+                self.instance.medical_expenses = self.cleaned_data.get("medical_expenses")
+            if self.cleaned_data.get("amount") is not None:
+                self.instance.amount = self.cleaned_data.get("amount")
+            if self.cleaned_data.get("claim_for") is not None:
+                self.instance.claim_for = self.cleaned_data.get("claim_for")
+            if self.cleaned_data.get("dependent_name") is not None:
+                self.instance.dependent_name = self.cleaned_data.get("dependent_name")
+        except Exception:
+            pass
 
         instance = super().save(commit=commit)
 

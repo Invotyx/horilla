@@ -205,7 +205,6 @@
                     <span class="oh-timeoff-modal__stat-count">{{reimbursement.description}}</span>
                 </div>
             </div>
-            {% if reimbursement.medical_expenses %}
             <div class="oh-timeoff-modal__stats-container mb-3">
                 <div class="oh-timeoff-modal__stat" style="width: 100%;">
                     <span class="oh-timeoff-modal__stat-title d-block mb-2">{% trans "Expense Items" %}</span>
@@ -221,21 +220,24 @@
                                 </div>
                             </div>
                             <div class="oh-sticky-table__tbody">
-                                {% for it in reimbursement.medical_expenses %}
-                                <div class="oh-sticky-table__tr">
-                                    <div class="oh-sticky-table__td">{{ it.expense_date }}</div>
-                                    <div class="oh-sticky-table__td">{{ it.expense_type }}</div>
-                                    <div class="oh-sticky-table__td">{{ it.provider }}</div>
-                                    <div class="oh-sticky-table__td">{{ it.expense_amount }}</div>
-                                    <div class="oh-sticky-table__td">{{ it.receipt_no_date }}</div>
-                                </div>
-                                {% endfor %}
+                                {% if reimbursement.medical_expenses %}
+                                    {% for it in reimbursement.medical_expenses %}
+                                    <div class="oh-sticky-table__tr">
+                                        <div class="oh-sticky-table__td">{{ it.expense_date }}</div>
+                                        <div class="oh-sticky-table__td">{{ it.expense_type }}</div>
+                                        <div class="oh-sticky-table__td">{{ it.provider }}</div>
+                                        <div class="oh-sticky-table__td">{{ it.expense_amount }}</div>
+                                        <div class="oh-sticky-table__td">{{ it.receipt_no_date }}</div>
+                                    </div>
+                                    {% endfor %}
+                                {% else %}
+                                    <div class="oh-sticky-table__tr"><div class="oh-sticky-table__td" colspan="5">{% trans "No itemized expenses provided" %}</div></div>
+                                {% endif %}
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
-            {% endif %}
             <div class="oh-timeoff-modal__stats-container mb-3">
                 <div class="oh-timeoff-modal__stat">
                     <span class="oh-timeoff-modal__stat-title">{% trans "Attachments" %}</span>

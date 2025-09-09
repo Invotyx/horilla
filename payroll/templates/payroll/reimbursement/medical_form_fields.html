@@ -99,6 +99,9 @@
     </div>
   </div>
 
+  {# Embed existing expenses as JSON for reliable parsing #}
+  {{ form.instance.medical_expenses|default:'[]'|json_script:"existing_medical_expenses" }}
+
   <div class="mr-card mr-col-8">
     <h4>{% trans "Medical Expense Details" %}</h4>
     <div id="expensesContainer"></div>
@@ -116,19 +119,23 @@
         {% if form.instance.pk %}
       <div class="mt-2">
         {% if form.instance.attachment %}
-          <div>
-            <a href="{{ form.instance.attachment.url }}" download>{{ form.instance.attachment.name|cut:'payroll/reimbursements/' }}</a>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <a href="{{ form.instance.attachment.url }}" target="_blank" rel="noopener">{{ form.instance.attachment.name|cut:'payroll/reimbursements/' }}</a>
+            <a href="#" class="text-danger" onclick="event.preventDefault(); document.getElementById('remove_primary_attachment').value='1'; this.closest('div').style.display='none';">&times;</a>
           </div>
         {% endif %}
         {% for doc in form.instance.other_attachments.all %}
-          <div>
-            <a href="{{ doc.attachment.url }}" download>{{ doc.attachment.name|cut:'payroll/reimbursements/' }}</a>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <a href="{{ doc.attachment.url }}" target="_blank" rel="noopener">{{ doc.attachment.name|cut:'payroll/reimbursements/' }}</a>
+            <a href="#" class="text-danger" onclick="event.preventDefault(); (function(){var h=document.getElementById('remove_existing_attachments'); h.value = (h.value? (h.value+',') : '') + '{{ doc.id }}'; })(); this.closest('div').style.display='none';">&times;</a>
           </div>
         {% endfor %}
       </div>
     {% endif %}
 
     <div id="docsPreview" class="mt-2"></div>
+    <input type="hidden" id="remove_primary_attachment" name="remove_primary_attachment" value="0" />
+    <input type="hidden" id="remove_existing_attachments" name="remove_existing_attachments" value="" />
   </div>
 
   <div class="mr-card mr-col-8 mr-total ">
@@ -250,7 +257,8 @@
 
     // Initialize rows from instance or add one by default
     try{
-      var existing = {{ form.instance.medical_expenses|default:'null'|safe }};
+      var existingEl = document.getElementById('existing_medical_expenses');
+      var existing = existingEl ? JSON.parse(existingEl.textContent) : null;
       if (Array.isArray(existing) && existing.length){ existing.forEach(addExpense); }
       else { addExpense({}); }
     }catch(err){ addExpense({}); }

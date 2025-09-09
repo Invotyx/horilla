@@ -1084,6 +1084,11 @@ class ReimbursementForm(ModelForm):
             # Persist filtered expenses back so instance saves it
             if expenses:
                 cleaned_data["medical_expenses"] = expenses
+                # Ensure amount reflects total of expenses (server-authoritative)
+                try:
+                    cleaned_data["amount"] = round(total, 2)
+                except Exception:
+                    cleaned_data["amount"] = total
 
             # Validate claim_for and dependent name
             claim_for = cleaned_data.get("claim_for") or self.data.get("claim_for")
@@ -1219,11 +1224,36 @@ class ReimbursementForm(ModelForm):
         is_new = not self.instance.pk
         attachments = self.files.getlist("attachment")
 
+        # Process requested removals of existing attachments (from edit UI)
+        try:
+            remove_primary = (self.data.get("remove_primary_attachment") in ("1", 1, True, "true"))
+            remove_ids_csv = (self.data.get("remove_existing_attachments") or "").strip()
+            remove_ids = [int(x) for x in remove_ids_csv.split(",") if x.strip().isdigit()]
+        except Exception:
+            remove_primary = False
+            remove_ids = []
+
         if attachments:
             # Save the first file as the primary attachment
             self.instance.attachment = attachments[0]
 
         instance = super().save(commit=commit)
+
+        # Apply removal after instance is saved/available
+        try:
+            if remove_primary and instance.attachment:
+                instance.attachment.delete(save=False)
+                instance.attachment = None
+                if commit:
+                    instance.save(update_fields=["attachment"])
+            if remove_ids:
+                qs = ReimbursementMultipleAttachment.objects.filter(id__in=remove_ids)
+                for obj in qs:
+                    instance.other_attachments.remove(obj)
+                    obj.attachment.delete(save=False)
+                    obj.delete()
+        except Exception:
+            pass
 
         # Persist medical changes even when approved (model.save may skip on approved+allowance)
         try:

@@ -2075,7 +2075,6 @@ def approve_reimbursements(request):
 
 
 @login_required
-@permission_required("payroll.delete_reimbursement")
 def delete_reimbursements(request):
     """
     This method is used to delete the reimbursements
@@ -2085,6 +2084,16 @@ def delete_reimbursements(request):
     deleted = 0
     blocked = 0
     for reimbursement in reimbursements:
+        is_owner = (
+            request.user.is_authenticated
+            and reimbursement.employee_id
+            and reimbursement.employee_id.employee_user_id == request.user
+        )
+        allowed_by_owner = is_owner and reimbursement.status == "requested"
+        allowed_by_perm = request.user.has_perm("payroll.delete_reimbursement")
+        if not (allowed_by_owner or allowed_by_perm or request.user.is_superuser):
+            blocked += 1
+            continue
         if (
             reimbursement.type == "medical_encashment"
             and hasattr(reimbursement, "is_locked")
@@ -2098,7 +2107,7 @@ def delete_reimbursements(request):
     if deleted:
         messages.success(request, _("Reimbursements deleted"))
     if blocked:
-        messages.error(request, _("Some medical claims are locked and cannot be deleted."))
+        messages.error(request, _("Some claims cannot be deleted."))
     notify.send(
         request.user.employee_get,
         recipient=user,

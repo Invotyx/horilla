@@ -184,7 +184,9 @@
                                         </div>
                                         <div data-cell-index="4" class="oh-sticky-table__td">
                                         {% with progress=req.approval_progress %}
-                                            {% if req.status == 'rejected' and req.rejected_by_department %}
+                                            {% if req.status == 'closed' %}
+                                                <span class="badge bg-primary">{% trans "Closed" %}</span>
+                                            {% elif req.status == 'rejected' and req.rejected_by_department %}
                                                 Rejected by {{ req.rejected_by_department }}
                                             {% elif progress.1 and progress.0 %}
                                                 Approved by {{ req.last_approved_department }} ({{ progress.0 }}/{{ progress.1 }} {% trans "approved" %})
@@ -548,7 +550,9 @@
                                             </div>
                                             <div data-cell-index="17" class="oh-sticky-table__td">
                                                 {% with progress=req.approval_progress %}
-                                                    {% if req.status == 'rejected' and req.rejected_by_department %}
+                                                    {% if req.status == 'closed' %}
+                                                        <span class="badge bg-primary">{% trans "Closed" %}</span>
+                                                    {% elif req.status == 'rejected' and req.rejected_by_department %}
                                                         Rejected by {{ req.rejected_by_department }}
                                                     {% elif progress.1 and progress.0 %}
                                                         Approved by {{ req.last_approved_department }} ({{ progress.0 }}/{{ progress.1 }} {% trans "approved" %})
@@ -894,7 +898,9 @@
                                             </div>
                                             <div data-cell-index="25" class="oh-sticky-table__td">
                                             {% with progress=req.approval_progress %}
-                                                {% if req.status == 'rejected' and req.rejected_by_department %}
+                                                {% if req.status == 'closed' %}
+                                                    <span class="badge bg-primary">{% trans "Closed" %}</span>
+                                                {% elif req.status == 'rejected' and req.rejected_by_department %}
                                                     Rejected by {{ req.rejected_by_department }}
                                                 {% elif progress.1 and progress.0 %}
                                                     Approved by {{ req.last_approved_department }} ({{ progress.0 }}/{{ progress.1 }} {% trans "approved" %})

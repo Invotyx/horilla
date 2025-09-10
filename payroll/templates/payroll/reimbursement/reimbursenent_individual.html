@@ -86,12 +86,18 @@
                 <span class="oh-timeoff-modal__stat-title">{% trans "Status" %}</span>
                 <span class="oh-timeoff-modal__stat-count">
                     {% with progress=reimbursement.approval_progress %}
-                        {% if reimbursement.status == 'rejected' and reimbursement.rejected_by_department %}
-                            Rejected by {{ reimbursement.rejected_by_department }}
-                        {% elif progress.1 and progress.0 %}
-                            Approved by {{ reimbursement.last_approved_department }} ({{ progress.0 }}/{{ progress.1 }} {% trans "approved" %})
+                        {% if reimbursement.status == 'closed' %}
+                            <span class="badge bg-primary">{% trans "Closed" %}</span>
+                        {% elif reimbursement.status == 'approved' %}
+                            <span class="badge bg-success">{% trans "Approved" %} {% if progress.1 %}( {{ progress.0 }}/{{ progress.1 }} Approved by {{ reimbursement.last_approved_department }} ){% endif %}</span>
+
+                        {% elif reimbursement.status == 'rejected' %}
+                            <span class="badge bg-danger">{% trans "Rejected" %} {% if reimbursement.rejected_by_department %}(by {{ reimbursement.rejected_by_department }}){% endif %}</span>
+                        {% elif reimbursement.status == 'requested' %}
+                            {% elif reimbursement.status == 'requested' %}
+                            <span class="badge bg-warning text-dark">{% trans "Requested" %}</span>
                         {% else %}
-                            {{ reimbursement.get_status_display }}{% if progress.1 %} ({{ progress.0 }}/{{ progress.1 }} {% trans "approved" %}){% endif %}
+                            <span class="badge bg-secondary">{{ reimbursement.get_status_display }}</span>
                         {% endif %}
                     {% endwith %}
                 </span>

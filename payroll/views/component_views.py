@@ -1596,7 +1596,7 @@ def view_reimbursement(request):
             "other_attachments"
         )
         approved_total = (
-            emp_claims.filter(status="approved", allowance_on__gte=start, allowance_on__lt=end)
+            emp_claims.filter(status__in=["closed"], allowance_on__gte=start, allowance_on__lt=end)
             .aggregate(total=Sum("amount"))
             .get("total")
             or 0
@@ -1716,7 +1716,7 @@ def search_reimbursement(request):
             "other_attachments"
         )
         approved_total = (
-            emp_claims.filter(status="approved", allowance_on__gte=start, allowance_on__lt=end)
+            emp_claims.filter(status="closed", allowance_on__gte=start, allowance_on__lt=end)
             .aggregate(total=Sum("amount"))
             .get("total")
             or 0
@@ -1797,7 +1797,7 @@ def medical_tab(request, emp_id):
 
     total_limit = 100000
     availed = (
-        claims_qs.filter(status="approved").aggregate(total=Sum("amount"))["total"]
+        claims_qs.filter(status="closed").aggregate(total=Sum("amount"))["total"]
         or 0
     )
     remaining = total_limit - availed

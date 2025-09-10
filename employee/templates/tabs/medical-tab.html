@@ -81,10 +81,11 @@
         <!-- Right: Status badge -->
         <div class="col-3 text-end">
           <span class="badge
-            {% if claim.instance.status == 'approved' %}bg-success
+            {% if claim.instance.status == 'closed' %}bg-primary
+            {% elif claim.instance.status == 'approved' %}bg-success
             {% elif claim.instance.status == 'rejected' %}bg-danger
             {% elif claim.instance.status == 'requested' %}bg-warning text-dark
-            {% endif %}">
+            {% else %}bg-secondary{% endif %}">
             {{ claim.instance.status|capfirst }}
           </span>
         </div>
@@ -112,8 +113,18 @@
 
             <ul class="list-unstyled small text-muted mb-0">
               <li><strong>{% trans 'Submission Date' %}:</strong> <span class="dateformat_changer">{{ claim.instance.allowance_on }}</span></li>
-              <li><strong>{% trans 'Cumulative Total' %}:</strong> PKR {{ claim.cumulative|floatformat:0 }}</li>
-              <li><strong>{% trans 'Remaining Balance' %}:</strong> PKR {{ claim.remaining|floatformat:0 }}</li>
+              <li><strong>{% trans 'Cumulative Total' %}:</strong>
+                PKR {{ claim.cumulative|floatformat:0 }}
+                {% if claim.instance.status == 'approved' %}
+                  <span class="text-muted small">({% trans 'updates when closed' %})</span>
+                {% endif %}
+              </li>
+              <li><strong>{% trans 'Remaining Balance' %}:</strong>
+                PKR {{ claim.remaining|floatformat:0 }}
+                {% if claim.instance.status == 'approved' %}
+                  <span class="text-muted small">({% trans 'updates when closed' %})</span>
+                {% endif %}
+              </li>
             </ul>
           </div>
         </div>

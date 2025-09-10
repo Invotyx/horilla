@@ -451,7 +451,9 @@
                                     <div class="loan-type badge {% if req.status == 'approved' %}bg-success{% elif req.status == 'rejected' %}bg-danger{% elif req.status == 'requested' %}bg-warning text-dark{% elif req.status == 'closed' %}bg-primary{% else %}bg-secondary{% endif %}"
                                         style="display: inline;">
                                         {% with progress=req.approval_progress %}
-                                            {% if req.status == 'rejected' and req.rejected_by_department %}
+                                            {% if req.status == 'closed' %}
+                                                <span class="badge bg-primary">{% trans "Closed" %} ({{progress.0}}/{{progress.1}} {% trans "approved" %})</span>
+                                            {% elif req.status == 'rejected' and req.rejected_by_department %}
                                                 Rejected by {{ req.rejected_by_department }}
                                             {% elif progress.1 and progress.0 %}
                                                 Approved by {{ req.last_approved_department }} ({{ progress.0 }}/{{ progress.1 }} {% trans "approved" %})

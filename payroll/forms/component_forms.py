@@ -1240,8 +1240,10 @@ class ReimbursementForm(ModelForm):
             remove_ids = []
 
         if attachments:
-            # Save the first file as the primary attachment
-            self.instance.attachment = attachments[0]
+            # Do not overwrite existing primary unless user requested removal
+            if not (getattr(self.instance, "attachment", None) and not remove_primary):
+                # Save the first file as the primary attachment
+                self.instance.attachment = attachments[0]
 
         # Ensure medical fields are explicitly set on instance before save
         try:
@@ -1261,7 +1263,8 @@ class ReimbursementForm(ModelForm):
 
         # Apply removal after instance is saved/available
         try:
-            if remove_primary and instance.attachment:
+            # Only remove primary post-save if user asked to remove and didn't upload a replacement
+            if remove_primary and not attachments and instance.attachment:
                 instance.attachment.delete(save=False)
                 instance.attachment = None
                 if commit:
@@ -1302,7 +1305,11 @@ class ReimbursementForm(ModelForm):
 
         if attachments:
             # Store any additional files as separate attachments
-            additional_files = attachments[1:]
+            if getattr(self.instance, "attachment", None) and not remove_primary:
+                # We kept existing primary; all uploaded are additional
+                additional_files = attachments
+            else:
+                additional_files = attachments[1:]
             if additional_files:
                 attachment_objs = [
                     ReimbursementMultipleAttachment(attachment=file)

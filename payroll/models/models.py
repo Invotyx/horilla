@@ -1670,6 +1670,8 @@ class Reimbursement(HorillaModel):
         editable=False,
     )
     description = models.TextField(null=True, max_length=255)
+    # Optional remarks provided by Finance at approval time (e.g., when approving partial payments)
+    finance_comment = models.TextField(null=True, blank=True, max_length=500)
     allowance_id = models.ForeignKey(
         Allowance, on_delete=models.SET_NULL, null=True, editable=False
     )
@@ -1699,7 +1701,8 @@ class Reimbursement(HorillaModel):
             raise ValidationError({"attachment": "This field is required"})
         if self.type == "medical_encashment" and self.attachment is None:
             raise ValidationError({"attachment": "This field is required"})
-        # Ensure amount mirrors total for medical claims
+        # Ensure total_claimed_amount is computed from medical_expenses for medical claims,
+        # but do NOT override approved amount once beyond requested stage.
         if self.type == "medical_encashment":
             # Prefer explicitly set total_claimed_amount; if missing try computing from expenses
             if (self.total_claimed_amount is None or self.total_claimed_amount == 0) and self.medical_expenses:
@@ -1709,7 +1712,8 @@ class Reimbursement(HorillaModel):
                     )
                 except Exception:
                     pass
-            if self.total_claimed_amount:
+            # During requested stage, mirror amount to claimed total for visibility only
+            if self.status == "requested" and self.total_claimed_amount:
                 self.amount = self.total_claimed_amount
         if self.type == "leave_encashment" and self.leave_type_id is None:
             raise ValidationError({"leave_type_id": "This field is required"})

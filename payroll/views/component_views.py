@@ -1863,6 +1863,7 @@ def approve_reimbursements(request):
         eval_validate(request.GET.get("amount")) if request.GET.get("amount") else 0
     )
     amount = max(0, amount)
+    finance_comment = request.GET.get("finance_comment", "").strip()
     reject_reason = request.GET.get("reject_reason", "").strip()
     reimbursements = Reimbursement.objects.filter(id__in=ids)
     current_emp = request.user.employee_get
@@ -1927,7 +1928,37 @@ def approve_reimbursements(request):
                     # For medical claims, only Accounts & Finance approvers can edit amount
                     dept = current_emp.get_department()
                     if dept and getattr(dept, "department", None) == "Accounts & Finance":
+                        # Validate approved amount vs. claimed total
+                        claimed_total = reimbursement.total_claimed_amount or 0
+                        if not claimed_total:
+                            # fallback: compute from expenses if available
+                            try:
+                                expenses = reimbursement.medical_expenses or []
+                                claimed_total = sum(
+                                    float(e.get("expense_amount") or e.get("amount") or 0)
+                                    for e in expenses
+                                )
+                            except Exception:
+                                claimed_total = 0
+                        if claimed_total and amount > claimed_total:
+                            messages.error(
+                                request,
+                                _(
+                                    f"Approved amount (PKR {amount:,}) cannot exceed claimed total (PKR {claimed_total:,})."
+                                ),
+                            )
+                            continue
+                        # If approving a partial (< claimed), require finance comment
+                        if claimed_total and amount < claimed_total and not finance_comment:
+                            messages.error(
+                                request,
+                                _(" Reason  is required when approving a partial amount."),
+                            )
+                            continue
                         reimbursement.amount = amount
+                        # Save finance comment if provided
+                        if finance_comment:
+                            reimbursement.finance_comment = finance_comment[:500]
                     approved_claims_total = (
                         Reimbursement.objects.filter(
                             employee_id=emp,
@@ -2141,7 +2172,7 @@ def print_medical_reimbursement(request, instance_id):
         return redirect(view_reimbursement)
     # Normalize expenses to safe keys for template rendering
     items = []
-    total = 0
+    total = 0.0
     try:
         expenses = reimbursement.medical_expenses or []
         for e in expenses:
@@ -2160,10 +2191,27 @@ def print_medical_reimbursement(request, instance_id):
             items.append({"desc": desc, "amt": amt, "raw": e})
     except Exception:
         items = []
+    # Claimed total prefers explicit field, falls back to computed total
+    claimed_total = (
+        reimbursement.total_claimed_amount if reimbursement.total_claimed_amount else total
+    )
+    try:
+        approved_amount = float(reimbursement.amount or 0)
+    except Exception:
+        approved_amount = 0.0
+    remaining = claimed_total - approved_amount
+    if remaining < 0:
+        remaining = 0.0
     return render(
         request,
         "payroll/reimbursement/medical_print.html",
-        {"reimbursement": reimbursement, "items": items, "items_total": total},
+        {
+            "reimbursement": reimbursement,
+            "items": items,
+            "items_total": total,
+            "claimed_total": claimed_total,
+            "remaining_balance": remaining,
+        },
     )
 def reimbursement_individual_view(request, instance_id):
     """
@@ -2211,8 +2259,12 @@ def delete_attachments(request, _reimbursement_id):
     This mehtod is used to delete the attachements
     """
     ids = request.GET.getlist("ids")
+    reimbursement = Reimbursement.objects.filter(id=_reimbursement_id).first()
+    if reimbursement and reimbursement.type == "medical_encashment" and reimbursement.status != "requested":
+        messages.error(request, _("Attachments can only be deleted while the medical claim is in 'Requested' status."))
+        return redirect(view_reimbursement)
     ReimbursementMultipleAttachment.objects.filter(id__in=ids).delete()
-    messages.success(request, "Attachment deleted")
+    messages.success(request, _("Attachment deleted"))
     return redirect(view_reimbursement)
 
 

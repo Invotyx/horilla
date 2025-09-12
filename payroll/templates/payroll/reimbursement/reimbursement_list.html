@@ -1179,22 +1179,24 @@
                                                 <div class="oh-sticky-table__td dateformat_changer">{{ claim.created_at|date:"F j, Y" }}</div>
                                                 <div class="oh-sticky-table__td">{{ claim.amount }}</div>
                                                     <div class="oh-sticky-table__td ">
-                                                        {% with progress=claim.approval_progress %}
-                                                            {% if claim.status == 'rejected' and claim.rejected_by_department %}
-                                                                <span class="badge bg-danger">Rejected by {{ claim.rejected_by_department }}</span>
-                                                            {% elif progress.1 and progress.0 %}
-                                                                <span class="badge bg-warning text-dark">Approved by {{ claim.last_approved_department }} ({{ progress.0 }}/{{ progress.1 }} {% trans "approved" %})</span>
-                                                            {% else %}
-                                                                <span class="badge 
-                                                                    {% if claim.status == 'approved' %}bg-success
-                                                                    {% elif claim.status == 'requested' %}bg-warning text-dark
-                                                                    {% elif claim.status == 'rejected' %}bg-danger
-                                                                    {% elif claim.status == 'closed' %}bg-primary
-                                                                    {% endif %}">
-                                                                    {{ claim.status|title }}{% if progress.1 %} ({{ progress.0 }}/{{ progress.1 }} {% trans "approved" %}){% endif %}
-                                                                </span>
-                                                            {% endif %}
-                                                        {% endwith %}
+                                                    {% with progress=claim.approval_progress %}
+    {% if claim.status == 'closed' %}
+        <span class="badge bg-primary">{% trans "Closed" %}</span>
+    {% elif claim.status == 'approved' %}
+        <span class="badge bg-success">{% trans "Approved" %}
+            {% if progress.1 %}( {{ progress.0 }}/{{ progress.1 }} Approved by {{ claim.last_approved_department }} ){% endif %}
+        </span>
+    {% elif claim.status == 'rejected' %}
+        <span class="badge bg-danger">{% trans "Rejected" %}
+            {% if claim.rejected_by_department %}(by {{ claim.rejected_by_department }}){% endif %}
+        </span>
+    {% elif claim.status == 'requested' %}
+        <span class="badge bg-warning text-dark">{% trans "Requested" %}</span>
+    {% else %}
+        <span class="badge bg-secondary">{{ claim.get_status_display }}</span>
+    {% endif %}
+{% endwith %}
+
 </div>
 
                                                 <div class="oh-sticky-table__td">

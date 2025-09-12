@@ -243,10 +243,11 @@
                             </span>
                             {% with user_dept=request.user.employee_get.employee_work_info.department_id %}
                             {% if req|can_approve:request.user.employee_get or user_dept and req.status == 'approved' and user_dept.department == 'Accounts & Finance' and req.last_approved_department == 'Accounts & Finance' %}
-                            <form action="{% url 'approve-reimbursements' %}">
+                            <form action="{% url 'approve-reimbursements' %}" data-claimed-total="{{ req.total_claimed_amount|default:0 }}">
                                 <input type="hidden" name="ids" value="{{ req.id }}" />
                                 <input type="hidden" name="status" />
                                 <input type="hidden" name="reject_reason" />
+                                <input type="hidden" name="finance_comment" />
                                 {% if req.type == 'reimbursement' %}
                                 <p class="oh-faq-card__desc" style="height: 150px">
                                     <iframe
@@ -273,12 +274,14 @@
                                 </p>
                                 {% else %}
                                     {% if req.type == 'medical_encashment' %}
-                                        <p class="oh-faq-card__desc" style="max-height: 180px">
+                                        <p class="oh-faq-card__desc" style="max-height: 180px ">
                                             <i>{% trans 'Medical claim amount can be set by Finance approver only.' %}</i>
                                             {% if request.user.employee_get and req|can_approve:request.user.employee_get %}
                                                 {% with dep=request.user.employee_get.get_department %}
                                                     {% if dep and dep.department|lower == 'Accounts & Finance' %}
-                                                        <input style="display:block;padding:10px;margin-top:10px;" type="number" required default="0" min="0" placeholder="Amount" name="amount" class="mt-2"{% if req.status == "approved" %}disabled{% endif %} {% if req.amount %}value="{{req.amount}}"{% endif %} />
+                                                        {# Amount and Finance Comment will be captured via Finance Approval modal. #}
+                                                        <input   type="hidden" name="amount" value="{{ req.amount|default:0 }}" />
+                                                        <input type="hidden" name="finance_comment" />
                                                     {% endif %}
                                                 {% endwith %}
                                             {% endif %}
@@ -304,14 +307,29 @@
                                         <ion-icon class="me-1" name="close-circle-outline"></ion-icon>
                                     </button>
                                     {% if req.status != "approved" and req.status != "rejected" %}
-                                        <button
-                                            type="button"
-                                            onclick="reimbursementConfirm('Do You really want to approve the request?','#requestCard{{ req.id }}',true);$('#requestCard{{ req.id }} [name=status]').val('approved')"
-                                            title="{% trans 'Approve' %}"
-                                            class="oh-btn oh-btn--success w-100"
-                                        >
-                                            <ion-icon class="me-1" name="checkmark-outline"></ion-icon>
-                                        </button>
+                                        {% if req.type == 'medical_encashment' %}
+                                            {% with dep=request.user.employee_get.get_department %}
+                                                {% if dep and dep.department|lower == 'accounts & finance' %}
+                                                    <button
+                                                        type="button"
+                                                        onclick="reimbursementConfirm('Do You really want to approve the request?','#requestCard{{ req.id }}',true);$('#requestCard{{ req.id }} [name=status]').val('approved')"
+                                                        title="{% trans 'Approve' %}"
+                                                        class="oh-btn oh-btn--success w-100"
+                                                    >
+                                                        <ion-icon class="me-1" name="checkmark-outline"></ion-icon>
+                                                    </button>
+                                                {% endif %}
+                                            {% endwith %}
+                                            {% else %}
+                                            <button
+                                                type="button"
+                                                onclick="reimbursementConfirm('Do You really want to approve the request?','#requestCard{{ req.id }}',true);$('#requestCard{{ req.id }} [name=status]').val('approved')"
+                                                title="{% trans 'Approve' %}"
+                                                class="oh-btn oh-btn--success w-100"
+                                            >
+                                                <ion-icon class="me-1" name="checkmark-outline"></ion-icon>
+                                            </button>
+                                        {% endif %}
                                     {% else %}
                                         <button
                                             type="button"
@@ -324,7 +342,7 @@
                                         {% if req.attachment %}
                                         <a
                                             href="{{ req.attachment.url }}"
-                                            class="oh-btn oh-btn--light w-100"
+                                            class="oh-btn oh-btn--light w-50"
         									title="{% trans 'Print' %}"
                                             onclick="event.preventDefault(); return reimbursementPrint(this.href);"
                                         >
@@ -477,6 +495,7 @@
                                     </a>
                                     {% if request.user.is_authenticated and request.user.employee_get == req.employee_id %}
                                         {% if perms.payroll.change_reimbursement or request.user.employee_get == req.employee_id or req|can_approve:request.user.employee_get %}
+                                        {% if req.status == 'requested' %}
                                             <a
                                                 hx-get="{% url 'create-reimbursement' %}?instance_id={{ req.id }}"
                                                 hx-target="#objectCreateModalTarget"
@@ -492,6 +511,7 @@
                                                     aria-label="create outline"
                                                 ></ion-icon
                                             ></a>
+                                        {% endif %}
                                         {% endif %}
                                     {% endif %}
                                     {# Finance close/payment + print icons beside actions (medical claims) #}
@@ -603,10 +623,11 @@
                                 {% endif %}
                             </span>
                             {% if req|can_approve:request.user.employee_get %}
-                            <form action="{% url 'approve-reimbursements' %}">
+                            <form action="{% url 'approve-reimbursements' %}" data-claimed-total="{{ req.total_claimed_amount|default:0 }}">
                                 <input type="hidden" name="ids" value="{{ req.id }}" />
                                 <input type="hidden" name="status" />
                                 <input type="hidden" name="reject_reason" />
+                                <input type="hidden" name="finance_comment" />
 
                                 {% if req.type == 'reimbursement' %}
                                     <p class="oh-faq-card__desc" style="height: 150px">
@@ -941,10 +962,11 @@
                                 {% endif %}
                             </span>
                             {% if req|can_approve:request.user.employee_get %}
-                            <form action="{% url 'approve-reimbursements' %}">
+                            <form action="{% url 'approve-reimbursements' %}" data-claimed-total="{{ req.total_claimed_amount|default:0 }}">
                                 <input type="hidden" name="ids" value="{{ req.id }}" />
                                 <input type="hidden" name="status" />
                                 <input type="hidden" name="reject_reason" />
+                                <input type="hidden" name="finance_comment" />
                                 {% if req.type == 'reimbursement' %}
                                 <p class="oh-faq-card__desc" style="height: 150px">
                                     <iframe
@@ -1242,10 +1264,11 @@
                                 {% endif %}
                             </span>
                             {% if perms.payroll.change_reimbursement %}
-                            <form action="{% url 'approve-reimbursements' %}">
+                            <form action="{% url 'approve-reimbursements' %}" data-claimed-total="{{ req.total_claimed_amount|default:0 }}">
                                 <input type="hidden" name="ids" value="{{ req.id }}" />
                                 <input type="hidden" name="status" />
                                 <input type="hidden" name="reject_reason" />
+                                <input type="hidden" name="finance_comment" />
                                 {% if req.type == 'reimbursement' %}
                                 <p class="oh-faq-card__desc" style="height: 150px">
                                     <iframe
@@ -1459,7 +1482,9 @@
                 localStorage.setItem("activeTabReimbursment", activeTab);
             });
         });
-    </script>
+</script>
+
+<!-- Finance approval is handled via SweetAlert inside reimbursementConfirm() -->
 </div>
 
 <script>function reimbursementPrint(url){try{var w=window.open(url,'_blank','noopener'); if(!w){alert('Pop-up blocked'); return false;} var t=setInterval(function(){try{if(w.document && w.document.readyState==='complete'){clearInterval(t); w.focus(); w.print();}}catch(e){}},300); return false;}catch(e){return true;}}</script>

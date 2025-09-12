@@ -679,6 +679,8 @@
                                     </p>
                                 {% endif %}
                                 <div class="oh-btn-group">
+                                      {% with progress=req.approval_progress %}
+                                    {% if req.status != 'closed' and req.status != 'approved' and req.status != 'rejected' or  progress.1 and progress.0  %}
                                     <button
                                         type="button"
                                         title="{% trans 'Reject' %}"
@@ -687,6 +689,9 @@
                                     >
                                         <ion-icon class="me-1" name="close-circle-outline"></ion-icon>
                                     </button>
+                                    {% endif %}
+                                    {% endwith%}
+
                                     {% if req.status != "approved" and req.status != "rejected" %}
                                         <button
                                             type="button"

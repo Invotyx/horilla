@@ -668,7 +668,7 @@
                                         </i>
                                         {# Always submit current amount; restrict editing to A&F approvers #}
                                         {% with user_dept=request.user.employee_get.employee_work_info.department_id %}
-                                            {% if user_dept and user_dept.department == 'Accounts & Finance' and req|can_approve:request.user.employee_get %}
+                                            {% if user_dept and user_dept.department == 'Accounts & Finance' and req|can_approve:request.user.employee_get  and req.status != 'rejected' and req.status != 'closed' %}
                                                 <input style="display:block;padding:10px;margin-top:10px;" type="number" min="0" placeholder="Amount"
                                                        name="amount" class="mt-2" {% if req.status == "approved" %}disabled{% endif %}
                                                        value="{{ req.amount }}" />
@@ -701,13 +701,7 @@
                                         >
                                             <ion-icon class="me-1" name="checkmark-outline"></ion-icon>
                                         </button>
-                                    {% else %}
-                                        <button
-                                            type="button"
-                                            class="oh-btn oh-btn--success oh-btn--disabled w-100"
-                                        >
-                                        <ion-icon class="me-1" name="checkmark-outline"></ion-icon>
-                                        </button>
+                            
                                     {% endif %}
                                 </div>
                                 <input

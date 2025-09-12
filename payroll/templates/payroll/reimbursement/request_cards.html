@@ -274,7 +274,7 @@
                                 </p>
                                 {% else %}
                                     {% if req.type == 'medical_encashment' %}
-                                        <p class="oh-faq-card__desc" style="max-height: 180px ">
+                                        <p class="oh-faq-card__desc" style="max-height: 180px  padding:38px;">
                                             <i>{% trans 'Medical claim amount can be set by Finance approver only.' %}</i>
                                             {% if request.user.employee_get and req|can_approve:request.user.employee_get %}
                                                 {% with dep=request.user.employee_get.get_department %}

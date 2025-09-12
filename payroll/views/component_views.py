@@ -1952,7 +1952,7 @@ def approve_reimbursements(request):
                         if claimed_total and amount < claimed_total and not finance_comment:
                             messages.error(
                                 request,
-                                _(" Reason  is required when approving a partial amount."),
+                                _("Reason for Partial Amount is required when approving a partial amount."),
                             )
                             continue
                         reimbursement.amount = amount

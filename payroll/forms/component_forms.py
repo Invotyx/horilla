@@ -1305,10 +1305,13 @@ class ReimbursementForm(ModelForm):
 
         if attachments:
             # Store any additional files as separate attachments
-            if getattr(self.instance, "attachment", None) and not remove_primary:
-                # We kept existing primary; all uploaded are additional
+            # On create, we just set the primary from attachments[0]; do not duplicate it.
+            # On edit with an existing primary and the user keeps it (not removing), all uploaded files are additional.
+            if (not is_new) and getattr(self.instance, "attachment", None) and not remove_primary:
+                # Existing primary kept; treat all newly uploaded as additional
                 additional_files = attachments
             else:
+                # New record or replacing primary; exclude the first which became the primary
                 additional_files = attachments[1:]
             if additional_files:
                 attachment_objs = [

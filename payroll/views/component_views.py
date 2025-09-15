@@ -2218,6 +2218,41 @@ def reimbursement_individual_view(request, instance_id):
     This method is used to render the individual view of reimbursement object
     """
     reimbursement = Reimbursement.objects.get(id=instance_id)
+    # Build a single, de-duplicated list of attachments (primary + others)
+    combined_attachments = []
+    seen_urls = set()
+    try:
+        if getattr(reimbursement, "attachment", None):
+            url = reimbursement.attachment.url
+            if url not in seen_urls:
+                seen_urls.add(url)
+                combined_attachments.append(
+                    {
+                        "url": url,
+                        "name": getattr(reimbursement.attachment, "name", "").replace(
+                            "payroll/reimbursements/", ""
+                        ),
+                    }
+                )
+        for doc in reimbursement.other_attachments.all():
+            f = getattr(doc, "attachment", None)
+            if not f:
+                continue
+            url = f.url
+            if url in seen_urls:
+                continue
+            seen_urls.add(url)
+            combined_attachments.append(
+                {
+                    "url": url,
+                    "name": getattr(f, "name", "").replace(
+                        "payroll/reimbursements/", ""
+                    ),
+                }
+            )
+    except Exception:
+        # Fail-safe: if anything goes wrong above, fall back to showing whatever is available
+        combined_attachments = []
     requests_ids_json = request.GET.get("instances_ids")
     # Default navigation ids to None to avoid UnboundLocalError when not provided
     previous_id = None
@@ -2227,6 +2262,7 @@ def reimbursement_individual_view(request, instance_id):
         previous_id, next_id = closest_numbers(requests_ids, instance_id)
     context = {
         "reimbursement": reimbursement,
+        "attachments_combined": combined_attachments,
         "instances_ids": requests_ids_json,
         "previous": previous_id,
         "next": next_id,

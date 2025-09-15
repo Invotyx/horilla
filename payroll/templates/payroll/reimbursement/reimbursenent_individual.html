@@ -121,30 +121,20 @@
                 <div class="oh-timeoff-modal__stat" style="margin-left: 20px;">
                     <span class="oh-timeoff-modal__stat-title">{% trans "Attachments" %}</span>
                     <span class="oh-timeoff-modal__stat-count">
-                        {% if reimbursement.attachment %}
-                        <a
-                            href="{{reimbursement.attachment.url}}"
-                            rel="noopener noreferrer"
-                            target="_blank"
-                            ><span
-                                class="oh-file-icon oh-file-icon--pdf"
-                                onmouseover="enlargeattachment('{{reimbursement.attachment.url}}')"
-                                style="width:40px;height:40px"
-                            ></span
-                        ></a>
-                        {% endif %}
-                        {% for doc in reimbursement.other_attachments.all %}
-                        <a
-                            href="{{doc.attachment.url}}"
-                            rel="noopener noreferrer"
-                            target="_blank"
-                            ><span
-                                class="oh-file-icon oh-file-icon--pdf"
-                                onmouseover="enlargeattachment('{{doc.attachment.url}}')"
-                                style="width:40px;height:40px"
-                            ></span
-                        ></a>
-                    {% endfor %}
+                        {% for att in attachments_combined %}
+                            <a
+                                href="{{ att.url }}"
+                                rel="noopener noreferrer"
+                                target="_blank"
+                                ><span
+                                    class="oh-file-icon oh-file-icon--pdf"
+                                    onmouseover="enlargeattachment('{{ att.url }}')"
+                                    style="width:40px;height:40px"
+                                ></span
+                            ></a>
+                        {% empty %}
+                            <span class="oh-text--muted">{% trans "No attachments uploaded" %}</span>
+                        {% endfor %}
                     </span>
                 </div>
             </div>
@@ -265,18 +255,9 @@
                 <div class="oh-timeoff-modal__stat" style="width: 100%;">
                     <span class="oh-timeoff-modal__stat-title d-block mb-2">{% trans "Attachments" %}</span>
                     <div>
-                        {% if reimbursement.attachment %}
+                        {% for att in attachments_combined %}
                             <div class="mb-1">
-                                <a href="{{ reimbursement.attachment.url }}" target="_blank" rel="noopener">
-                                    {{ reimbursement.attachment.name|cut:'payroll/reimbursements/' }}
-                                </a>
-                            </div>
-                        {% endif %}
-                        {% for doc in reimbursement.other_attachments.all %}
-                            <div class="mb-1">
-                                <a href="{{ doc.attachment.url }}" target="_blank" rel="noopener">
-                                    {{ doc.attachment.name|cut:'payroll/reimbursements/' }}
-                                </a>
+                                <a href="{{ att.url }}" target="_blank" rel="noopener">{{ att.name }}</a>
                             </div>
                         {% empty %}
                             {% comment %} <div class="oh-text--muted">{% trans "No attachments uploaded" %}</div> {% endcomment %}

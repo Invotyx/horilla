@@ -55,6 +55,7 @@ from base.models import (
     JobPosition,
     JobRole,
     MultipleApprovalCondition,
+    APPROVAL_CONDITION_CHOICES,
     PenaltyAccounts,
     RotatingShift,
     RotatingShiftAssign,
@@ -404,9 +405,9 @@ class AssignUserGroup(Form):
         return group
 
 
-class AssignPermission(Form):
+class AssignPermission(forms.Form):
     """
-    Forms to assign user permision
+    Form to assign user permissions to employees
     """
 
     employee = HorillaMultiSelectField(
@@ -420,42 +421,49 @@ class AssignPermission(Form):
         ),
         label="Employee",
     )
-    try:
-        permissions = forms.MultipleChoiceField(
-            choices=[(perm.codename, perm.name) for perm in Permission.objects.all()],
-            error_messages={
-                "required": "Please choose a permission.",
-            },
-        )
-    except:
-        pass
+
+    # Declare without choices here (no DB query at import time!)
+    permissions = forms.MultipleChoiceField(
+        required=False,
+        error_messages={
+            "required": "Please choose a permission.",
+        },
+    )
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         reload_queryset(self.fields)
 
+        # ✅ Safe: populate choices only when the form is instantiated
+        self.fields["permissions"].choices = [
+            (perm.codename, perm.name) for perm in Permission.objects.all()
+        ]
+
     def clean(self):
         emps = self.data.getlist("employee")
         if emps:
             self.errors.pop("employee", None)
-        super().clean()
-        return
+        cleaned_data = super().clean()
+        return cleaned_data
 
     def save(self):
         """
-        Save method to assign permission to employee
+        Save method to assign permissions to employee users
         """
+        # Get user IDs linked to employees
         user_ids = Employee.objects.filter(
             id__in=self.data.getlist("employee")
         ).values_list("employee_user_id", flat=True)
-        permissions = self.cleaned_data["permissions"]
-        permissions = Permission.objects.filter(codename__in=permissions)
+
+        # Safe access to permissions
+        permission_codes = self.cleaned_data.get("permissions", [])
+        permissions = Permission.objects.filter(codename__in=permission_codes)
+
         users = User.objects.filter(id__in=user_ids)
         for user in users:
             user.user_permissions.set(permissions)
 
         return self
-
 
 class CompanyForm(ModelForm):
     """
@@ -2302,6 +2310,21 @@ class MultipleApproveConditionForm(ModelForm):
         ("icontains", _("Contains")),
     ]
 
+    condition_type = forms.ChoiceField(
+        choices=APPROVAL_CONDITION_CHOICES,
+        widget=forms.Select(attrs={"class": "oh-select oh-select-2 mb-2"}),
+        label=_("Condition"),
+    )
+    department = forms.ModelMultipleChoiceField(
+        queryset=Department.objects.all(),
+        widget=forms.SelectMultiple(attrs={"class": "oh-select oh-select-2 mb-2"}),
+        label=_("Department"),
+    )
+    all_departments = forms.BooleanField(
+        required=False,
+        label=_("All Departments"),
+        widget=forms.CheckboxInput(attrs={"class": "oh-input__checkbox"}),
+    )
     multi_approval_manager = forms.ChoiceField(
         choices=[],
         widget=forms.Select(attrs={"class": "oh-select oh-select-2 mb-2"}),
@@ -2318,6 +2341,7 @@ class MultipleApproveConditionForm(ModelForm):
                 "hx-get": "condition-value-fields",
             },
         ),
+        required=False,
     )
 
     class Meta:
@@ -2333,6 +2357,26 @@ class MultipleApproveConditionForm(ModelForm):
             (employee.pk, str(employee)) for employee in Employee.objects.all()
         ]
         self.fields["multi_approval_manager"].choices = choices
+        if self.instance.pk and self.instance.department.count() == Department.objects.count():
+            self.fields["all_departments"].initial = True
+        condition_type = (
+            self.data.get("condition_type")
+            or self.initial.get("condition_type")
+            or getattr(self.instance, "condition_type", None)
+        )
+        if condition_type == "medical_reimbursement":
+            for field in [
+                "condition_field",
+                "condition_operator",
+                "condition_value",
+                "condition_start_value",
+                "condition_end_value",
+            ]:
+                if field in self.fields:
+                    self.fields[field].widget = forms.HiddenInput()
+                    self.fields[field].required = False
+        if self.data.get("all_departments"):
+            self.fields["department"].required = False
 
 
 class DynamicPaginationForm(ModelForm):

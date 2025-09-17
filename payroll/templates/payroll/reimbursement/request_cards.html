@@ -1,4 +1,6 @@
-{% load i18n %} {% load static horillafilters %}{% include "filter_tags.html" %}
+{% load i18n %}
+{% load static horillafilters payrollfilters %}
+{% include "filter_tags.html" %}
 <div class="d-flex flex-row-reverse oh-wrapper">
     <span
         class="mb-3"
@@ -21,6 +23,17 @@
             style="background-color: yellowgreen"
         ></span>
         {% trans "Approved" %}
+    </span>
+    <span
+        class="mb-3"
+        onclick="$('[name=status]').val('closed').change();$('.filterButton').click()"
+        style="cursor: pointer; margin-right: 15px"
+    >
+        <span
+            class="oh-dot oh-dot--small me-1"
+            style="background-color: dodgerblue"
+        ></span>
+        {% trans "Closed" %}
     </span>
     <span
         class="mb-3"
@@ -70,43 +83,89 @@
                                     {% comment %} <div class="loan-type" style="display: inline; background:hsl(58.85deg 100% 80.93%);">
                                         {{ req.get_type_display }}
                                     </div> {% endcomment %}
-                                    <div class="loan-type"
-                                        style="display: inline;
-                                        {% if req.status == "approved" %}background:#9acd3245; {% elif req.status == "rejected" %}
-                                        background:#ff45002e;{% endif %}">
-                                        {{ req.get_status_display }}
+                                    <div class="loan-type badge {% if req.status == 'approved' %}bg-success{% elif req.status == 'rejected' %}bg-danger{% elif req.status == 'requested' %}bg-warning text-dark{% elif req.status == 'closed' %}bg-primary{% else %}bg-secondary{% endif %}"
+                                        style="display: inline;">
+                                        {% with progress=req.approval_progress %}
+                                            {% if req.status == 'rejected' and req.rejected_by_department %}
+                                                Rejected by {{ req.rejected_by_department }}
+                                            {% elif progress.1 and progress.0 %}
+                                                Approved by {{ req.last_approved_department }} ({{ progress.0 }}/{{ progress.1 }} {% trans "approved" %})
+                                            {% else %}
+                                                {{ req.get_status_display }}{% if progress.1 %} ({{ progress.0 }}/{{ progress.1 }} {% trans "approved" %}){% endif %}
+                                            {% endif %}
+                                        {% endwith %}
                                     </div>
                                 </div>
                                 <div>
-                                    {% if req.status != "approved" %}
-                                        {% if perms.payroll.change_reimbursement or request.user.employee_get == req.employee_id %}
-                                            <a
-                                                hx-get="{% url 'create-reimbursement' %}?instance_id={{ req.id }}"
-                                                hx-target="#objectCreateModalTarget"
-                                                class="mr-2"
-                                                style="cursor:pointer;"
-                                                title='{% trans "Update" %}'
-                                                data-toggle="oh-modal-toggle"
-                                                data-target="#objectCreateModal"
-                                                ><ion-icon
-                                                    class="text-dark md hydrated"
-                                                    name="create-outline"
-                                                    role="img"
-                                                    aria-label="create outline"
-                                                ></ion-icon
-                                            ></a>
+                                    {% if req.status != "approved" and req.status != "closed" %}
+                                        {% if not req.type == 'medical_encashment' or not req.is_locked or request.user.is_superuser %}
+                                            {% if perms.payroll.change_reimbursement or request.user.employee_get == req.employee_id or req|can_approve:request.user.employee_get %}
+                                                <a
+                                                    hx-get="{% url 'create-reimbursement' %}?instance_id={{ req.id }}"
+                                                    hx-target="#objectCreateModalTarget"
+                                                    class="mr-2"
+                                                    style="cursor:pointer;"
+                                                    title='{% trans "Update" %}'
+                                                    data-toggle="oh-modal-toggle"
+                                                    data-target="#objectCreateModal"
+                                                    ><ion-icon
+                                                        class="text-dark md hydrated"
+                                                        name="create-outline"
+                                                        role="img"
+                                                        aria-label="create outline"
+                                                    ></ion-icon
+                                                ></a>
+                                            {% endif %}
                                         {% endif %}
                                     {% endif %}
-                                    {% if perms.payroll.delete_reimbursement  %}
-                                    <a href="{% url "delete-reimbursement" %}?ids={{req.id}}" onclick="return confirm('Do you want to delete this record?')"
-                                        title='{% trans "Delete" %}'
-                                        ><ion-icon
-                                            class="text-danger md hydrated"
-                                            name="trash-outline"
-                                            role="img"
-                                            aria-label="trash outline"
-                                        ></ion-icon
-                                    ></a>
+                                    {# Finance close/payment + print icons next to actions #}
+                                    {% comment %} duplicated blocks below hidden {% endcomment %}
+                                    {% with user_dept=request.user.employee_get.employee_work_info.department_id %}
+                                    {% if user_dept and user_dept.department == 'Accounts & Finance' and req.type == 'medical_encashment' %}
+                                        {% if req.status == 'approved' and req.last_approved_department == 'Accounts & Finance' %}
+                                        
+                                            <a
+                                                href="{% url 'approve-reimbursements' %}?ids={{req.id}}&status=closed"
+                                                onclick="event.stopPropagation(); return confirm('Confirm payment completion?')"
+                                                class="btn btn-sm btn-primary me-1"
+                                                title="{% trans 'Payment Completion' %}"
+                                            >
+                                                <ion-icon class="md hydrated" name="checkmark-done-circle-outline" role="img" aria-label="payment completion"></ion-icon>
+                                            </a>
+                                            {% if req.attachment %}
+                                            <a
+                                                href="{{ req.attachment.url }}"
+                                                class="btn btn-sm btn-warning"
+                                                title="{% trans 'Print' %}"
+                                                onclick="event.stopPropagation(); event.preventDefault(); return reimbursementPrint(this.href);"
+                                            >
+                                                <ion-icon name="print-outline"></ion-icon>
+                                            </a>
+                                            {% endif %}
+                                        {% endif %}
+                                    {% endif %}
+                                    {% endwith %}
+
+
+                                    {% if perms.payroll.delete_reimbursement or request.user == req.employee_id.employee_user_id %}
+                                        {% if req.type == 'medical_encashment' and req.is_locked and not request.user.is_superuser %}
+                                            {# locked: do not render delete #}
+                                        {% elif req.status != 'requested' and not perms.payroll.delete_reimbursement %}
+                                            {# only owners of requested can delete without perm #}
+                                        {% else %}
+                                            <a href="{% url "delete-reimbursement" %}?ids={{req.id}}" onclick="return confirm('Do you want to delete this record?')"
+                                                title='{% trans "Delete" %}'>
+                                                <ion-icon
+
+                                                    class="text-danger md hydrated"
+                                                    name="trash-outline"
+                                                    role="img"
+                                                    aria-label="trash outline"
+
+                                                ></ion-icon>
+                                            </a>
+
+                                        {% endif %}
                                     {% endif %}
                                 </div>
 
@@ -135,6 +194,12 @@
                             </div>
                             <h3 class="oh-faq-card__title">{{ req.title }}</h3>
                             <p class="oh-faq-card__desc">{{ req.description }}.</p>
+                            {% if req.reject_reason %}
+                              <p class="oh-faq-card__desc bg-danger p-2 text-white">
+                               Rejection Reason  : {{ req.reject_reason }}
+                                </p>
+                            {% endif %}
+
                             <span
                                 class="oh-card__footer--border-top pt-1"
                                 style="display: block"
@@ -176,10 +241,13 @@
                                 >
                                 {% endif %}
                             </span>
-                            {% if perms.payroll.change_reimbursement %}
-                            <form action="{% url 'approve-reimbursements' %}">
+                            {% with user_dept=request.user.employee_get.employee_work_info.department_id %}
+                            {% if req|can_approve:request.user.employee_get or user_dept and req.status == 'approved' and user_dept.department == 'Accounts & Finance' and req.last_approved_department == 'Accounts & Finance' %}
+                            <form action="{% url 'approve-reimbursements' %}" data-claimed-total="{{ req.total_claimed_amount|default:0 }}">
                                 <input type="hidden" name="ids" value="{{ req.id }}" />
                                 <input type="hidden" name="status" />
+                                <input type="hidden" name="reject_reason" />
+                                <input type="hidden" name="finance_comment" />
                                 {% if req.type == 'reimbursement' %}
                                 <p class="oh-faq-card__desc" style="height: 150px">
                                     <iframe
@@ -205,20 +273,29 @@
                                     value="{{req.amount}}"{% endif %} />
                                 </p>
                                 {% else %}
-                                <p class="oh-faq-card__desc" style="max-height: 180px">
-                                    <i>
-                                        {% trans 'Requsted for total' %}
-                                        <span class="text-danger">
-                                            {{ req.ad_to_encash|add:req.cfd_to_encash }}
-                                        </span>
-                                        {% trans 'days' %} {% trans 'days to encash.' %}
-                                    </i>
-                                    <input style="display: block;padding:
-                                    10px;margin-top: 10px;" type="number" required
-                                    default="0" min="0" placeholder="Amount"
-                                    name="amount" class="mt-2"{% if req.status == "approved" %}disabled{% endif %} {% if req.amount %}
-                                    value="{{req.amount}}"{% endif %} />
-                                </p>
+                                    {% if req.type == 'medical_encashment' %}
+                                        <p class="oh-faq-card__desc" style="max-height: 180px  padding:38px;">
+                                            <i>{% trans 'Medical claim amount can be set by Finance approver only.' %}</i>
+                                            {% if request.user.employee_get and req|can_approve:request.user.employee_get %}
+                                                {% with dep=request.user.employee_get.get_department %}
+                                                    {% if dep and dep.department|lower == 'Accounts & Finance' %}
+                                                        {# Amount and Finance Comment will be captured via Finance Approval modal. #}
+                                                        <input   type="hidden" name="amount" value="{{ req.amount|default:0 }}" />
+                                                        <input type="hidden" name="finance_comment" />
+                                                    {% endif %}
+                                                {% endwith %}
+                                            {% endif %}
+                                        </p>
+                                    {% else %}
+                                        <p class="oh-faq-card__desc" style="max-height: 180px">
+                                            <i>
+                                                {% trans 'Requsted for total' %}
+                                                <span class="text-danger">{{ req.ad_to_encash|add:req.cfd_to_encash }}</span>
+                                                {% trans 'days' %} {% trans 'days to encash.' %}
+                                            </i>
+                                            <input style="display:block;padding:10px;margin-top:10px;" type="number" required default="0" min="0" placeholder="Amount" name="amount" class="mt-2"{% if req.status == "approved" %}disabled{% endif %} {% if req.amount %}value="{{req.amount}}"{% endif %} />
+                                        </p>
+                                    {% endif %}
                                 {% endif %}
                                 <div class="oh-btn-group">
                                     <button
@@ -230,14 +307,29 @@
                                         <ion-icon class="me-1" name="close-circle-outline"></ion-icon>
                                     </button>
                                     {% if req.status != "approved" and req.status != "rejected" %}
-                                        <button
-                                            type="button"
-                                            onclick="reimbursementConfirm('Do You really want to approve the request?','#requestCard{{ req.id }}',true);$('#requestCard{{ req.id }} [name=status]').val('approved')"
-                                            title="{% trans 'Approve' %}"
-                                            class="oh-btn oh-btn--success w-100"
-                                        >
-                                            <ion-icon class="me-1" name="checkmark-outline"></ion-icon>
-                                        </button>
+                                        {% if req.type == 'medical_encashment' %}
+                                            {% with dep=request.user.employee_get.get_department %}
+                                                {% if dep and dep.department|lower == 'accounts & finance' %}
+                                                    <button
+                                                        type="button"
+                                                        onclick="reimbursementConfirm('Do You really want to approve the request?','#requestCard{{ req.id }}',true);$('#requestCard{{ req.id }} [name=status]').val('approved')"
+                                                        title="{% trans 'Approve' %}"
+                                                        class="oh-btn oh-btn--success w-100"
+                                                    >
+                                                        <ion-icon class="me-1" name="checkmark-outline"></ion-icon>
+                                                    </button>
+                                                {% endif %}
+                                            {% endwith %}
+                                            {% else %}
+                                            <button
+                                                type="button"
+                                                onclick="reimbursementConfirm('Do You really want to approve the request?','#requestCard{{ req.id }}',true);$('#requestCard{{ req.id }} [name=status]').val('approved')"
+                                                title="{% trans 'Approve' %}"
+                                                class="oh-btn oh-btn--success w-100"
+                                            >
+                                                <ion-icon class="me-1" name="checkmark-outline"></ion-icon>
+                                            </button>
+                                        {% endif %}
                                     {% else %}
                                         <button
                                             type="button"
@@ -245,6 +337,18 @@
                                         >
                                         <ion-icon class="me-1" name="checkmark-outline"></ion-icon>
                                         </button>
+                                    {% endif %}
+                                    {% if user_dept and user_dept.department == 'Accounts & Finance' %}
+                                        {% if req.attachment %}
+                                        <a
+                                            href="{{ req.attachment.url }}"
+                                            class="oh-btn oh-btn--light w-50"
+        									title="{% trans 'Print' %}"
+                                            onclick="event.preventDefault(); return reimbursementPrint(this.href);"
+                                        >
+                                            <ion-icon name="print-outline"></ion-icon>
+                                        </a>
+                                        {% endif %}
                                     {% endif %}
                                 </div>
                                 <input
@@ -254,6 +358,7 @@
                                 />
                             </form>
                             {% endif %}
+                            {% endwith %}
                         </div>
                         {% endfor %}
                     </div>
@@ -361,16 +466,36 @@
                                     {% comment %} <div class="loan-type" style="display: inline; background:hsl(58.85deg 100% 80.93%);">
                                         {{ req.get_type_display }}
                                     </div> {% endcomment %}
-                                    <div class="loan-type"
-                                        style="display: inline;
-                                        {% if req.status == "approved" %}background:#9acd3245; {% elif req.status == "rejected" %}
-                                        background:#ff45002e;{% endif %}">
-                                        {{ req.get_status_display }}
+                                    <div class="loan-type badge {% if req.status == 'approved' %}bg-success{% elif req.status == 'rejected' %}bg-danger{% elif req.status == 'requested' %}bg-warning text-dark{% elif req.status == 'closed' %}bg-primary{% else %}bg-secondary{% endif %}"
+                                        style="display: inline;">
+                                        {% with progress=req.approval_progress %}
+                                            {% if req.status == 'closed' %}
+                                                <span class="badge bg-primary">{% trans "Closed" %} ({{progress.0}}/{{progress.1}} {% trans "approved" %})</span>
+                                            {% elif req.status == 'rejected' and req.rejected_by_department %}
+                                                Rejected by {{ req.rejected_by_department }}
+                                            {% elif progress.1 and progress.0 %}
+                                                Approved by {{ req.last_approved_department }} ({{ progress.0 }}/{{ progress.1 }} {% trans "approved" %})
+                                            {% else %}
+                                                {{ req.get_status_display }}{% if progress.1 %} ({{ progress.0 }}/{{ progress.1 }} {% trans "approved" %}){% endif %}
+                                            {% endif %}
+                                        {% endwith %}
                                     </div>
                                 </div>
                                 <div>
+                                    <a
+                                        hx-get="{% url 'reimbursement-individual-view' req.id %}"
+                                        hx-target="#objectDetailsModalTarget"
+                                        data-toggle="oh-modal-toggle"
+                                        data-target="#objectDetailsModal"
+                                        class="mr-2"
+                                        style="cursor:pointer;"
+                                        title='{% trans "View" %}'
+                                    >
+                                        <ion-icon class="text-dark md hydrated" name="eye-outline" role="img" aria-label="view"></ion-icon>
+                                    </a>
                                     {% if request.user.is_authenticated and request.user.employee_get == req.employee_id %}
-                                        {% if perms.payroll.change_reimbursement or request.user.employee_get == req.employee_id %}
+                                        {% if perms.payroll.change_reimbursement or request.user.employee_get == req.employee_id or req|can_approve:request.user.employee_get %}
+                                        {% if req.status == 'requested' %}
                                             <a
                                                 hx-get="{% url 'create-reimbursement' %}?instance_id={{ req.id }}"
                                                 hx-target="#objectCreateModalTarget"
@@ -387,7 +512,31 @@
                                                 ></ion-icon
                                             ></a>
                                         {% endif %}
+                                        {% endif %}
                                     {% endif %}
+                                    {# Finance close/payment + print icons beside actions (medical claims) #}
+                                    {% with user_dept=request.user.employee_get.employee_work_info.department_id %}
+                                    {% if user_dept and user_dept.department == 'Accounts & Finance' and req.type == 'medical_encashment' and req.status == 'approved' and req.last_approved_department == 'Accounts & Finance' %}
+                                        <a
+                                            href="{% url 'approve-reimbursements' %}?ids={{req.id}}&status=closed"
+                                            onclick="event.stopPropagation(); return confirm('Confirm payment completion?')"
+                                            class="btn btn-sm btn-primary me-1"
+                                            title="{% trans 'Payment Completion' %}"
+                                        >
+                                            <ion-icon name="checkmark-done-circle-outline"></ion-icon>
+                                        </a>
+                                        <a
+                                            href="{% url 'reimbursement-print' req.id %}"
+                                            class="btn btn-sm btn-warning me-1"
+                                            title="{% trans 'Print' %}"
+                                            onclick="event.stopPropagation();"
+                                            target="_blank"
+                                        >
+                                            <ion-icon name="print-outline"></ion-icon>
+                                        </a>
+                                    {% endif %}
+                                    {% endwith %}
+
                                     {% if perms.payroll.delete_reimbursement  %}
                                     <a href="{% url "delete-reimbursement" %}?ids={{req.id}}" onclick="return confirm('Do you want to delete this record?')"
                                         title='{% trans "Delete" %}'
@@ -426,6 +575,12 @@
                             </div>
                             <h3 class="oh-faq-card__title">{{ req.title }}</h3>
                             <p class="oh-faq-card__desc">{{ req.description }}.</p>
+                            {% if req.reject_reason %}
+                              <p class="oh-faq-card__desc bg-danger p-2 text-white">
+                               Rejection Reason  : {{ req.reject_reason }}
+                                </p>
+                            {% endif %}
+
                             <span
                                 class="oh-card__footer--border-top pt-1"
                                 style="display: block"
@@ -467,51 +622,65 @@
                                 >
                                 {% endif %}
                             </span>
-                            {% if perms.payroll.change_reimbursement %}
-                            <form action="{% url 'approve-reimbursements' %}">
+                            {% if req|can_approve:request.user.employee_get %}
+                            <form action="{% url 'approve-reimbursements' %}" data-claimed-total="{{ req.total_claimed_amount|default:0 }}">
                                 <input type="hidden" name="ids" value="{{ req.id }}" />
                                 <input type="hidden" name="status" />
+                                <input type="hidden" name="reject_reason" />
+                                <input type="hidden" name="finance_comment" />
+
                                 {% if req.type == 'reimbursement' %}
-                                <p class="oh-faq-card__desc" style="height: 150px">
-                                    <iframe
-                                        id="iframe_pdf"
-                                        src="{{ req.attachment.url }}"
-                                        style="width: 100%"
-                                        frameborder="0"
-                                    ></iframe>
-                                </p>
+                                    <p class="oh-faq-card__desc" style="height: 150px">
+                                        <iframe
+                                            id="iframe_pdf"
+                                            src="{{ req.attachment.url }}"
+                                            style="width: 100%"
+                                            frameborder="0"
+                                        ></iframe>
+                                    </p>
                                 {% elif req.type == 'bonus_encashment' %}
-                                <p class="oh-faq-card__desc" style="max-height: 180px">
-                                    <i>
-                                        {% trans 'Requsted for' %}
-                                        <span class="text-danger">
-                                            {{ req.bonus_to_encash }}
-                                        </span>
-                                        {% trans 'Bonus points to encash.' %}
-                                    </i>
-                                    <input style="display: block;padding:
-                                    10px;margin-top: 10px;" type="number" required
-                                    default="0" min="0" placeholder="Amount"
-                                    name="amount" class="mt-2"{% if req.status == "approved" %}disabled{% endif %} {% if req.amount %}
-                                    value="{{req.amount}}"{% endif %} />
-                                </p>
-                                {% else %}
-                                <p class="oh-faq-card__desc" style="max-height: 180px">
-                                    <i>
-                                        {% trans 'Requsted for total' %}
-                                        <span class="text-danger">
-                                            {{ req.ad_to_encash|add:req.cfd_to_encash }}
-                                        </span>
-                                        {% trans 'days' %} {% trans 'days to encash.' %}
-                                    </i>
-                                    <input style="display: block;padding:
-                                    10px;margin-top: 10px;" type="number" required
-                                    default="0" min="0" placeholder="Amount"
-                                    name="amount" class="mt-2"{% if req.status == "approved" %}disabled{% endif %} {% if req.amount %}
-                                    value="{{req.amount}}"{% endif %} />
-                                </p>
+                                    <p class="oh-faq-card__desc" style="max-height: 180px">
+                                        <i>
+                                            {% trans 'Requsted for' %}
+                                            <span class="text-danger">{{ req.bonus_to_encash }}</span>
+                                            {% trans 'Bonus points to encash.' %}
+                                        </i>
+                                        <input style="display:block;padding:10px;margin-top:10px;" type="number" required default="0" min="0" placeholder="Amount"
+                                               name="amount" class="mt-2"{% if req.status == "approved" %}disabled{% endif %}
+                                               {% if req.amount %}value="{{ req.amount }}"{% endif %} />
+                                    </p>
+                                {% elif req.type == 'leave_encashment' %}
+                                    <p class="oh-faq-card__desc" style="max-height: 180px">
+                                        <i>
+                                            {% trans 'Requsted for total' %}
+                                            <span class="text-danger">{{ req.ad_to_encash|add:req.cfd_to_encash }}</span>
+                                            {% trans 'days' %} {% trans 'days to encash.' %}
+                                        </i>
+                                        <input style="display:block;padding:10px;margin-top:10px;" type="number" required default="0" min="0" placeholder="Amount"
+                                               name="amount" class="mt-2"{% if req.status == "approved" %}disabled{% endif %}
+                                               {% if req.amount %}value="{{ req.amount }}"{% endif %} />
+                                    </p>
+                                {% elif req.type == 'medical_encashment' %}
+                                    <p class="oh-faq-card__desc" style="max-height: 180px">
+                                        <i>
+                                            {% trans 'Total Claimed Amount' %}:
+                                            <span class="text-danger">{{ req.amount }}</span>
+                                        </i>
+                                        {# Always submit current amount; restrict editing to A&F approvers #}
+                                        {% with user_dept=request.user.employee_get.employee_work_info.department_id %}
+                                            {% if user_dept and user_dept.department == 'Accounts & Finance' and req|can_approve:request.user.employee_get  and req.status != 'rejected' and req.status != 'closed' %}
+                                                <input style="display:block;padding:10px;margin-top:10px;" type="number" min="0" placeholder="Amount"
+                                                       name="amount" class="mt-2" {% if req.status == "approved" %}disabled{% endif %}
+                                                       value="{{ req.amount }}" />
+                                            {% else %}
+                                                <input type="hidden" name="amount" value="{{ req.amount }}" />
+                                            {% endif %}
+                                        {% endwith %}
+                                    </p>
                                 {% endif %}
                                 <div class="oh-btn-group">
+                                      {% with progress=req.approval_progress %}
+                                    {% if req.status != 'closed' and req.status != 'approved' and req.status != 'rejected' or  progress.1 and progress.0  %}
                                     <button
                                         type="button"
                                         title="{% trans 'Reject' %}"
@@ -520,6 +689,9 @@
                                     >
                                         <ion-icon class="me-1" name="close-circle-outline"></ion-icon>
                                     </button>
+                                    {% endif %}
+                                    {% endwith%}
+
                                     {% if req.status != "approved" and req.status != "rejected" %}
                                         <button
                                             type="button"
@@ -529,13 +701,7 @@
                                         >
                                             <ion-icon class="me-1" name="checkmark-outline"></ion-icon>
                                         </button>
-                                    {% else %}
-                                        <button
-                                            type="button"
-                                            class="oh-btn oh-btn--success oh-btn--disabled w-100"
-                                        >
-                                        <ion-icon class="me-1" name="checkmark-outline"></ion-icon>
-                                        </button>
+                            
                                     {% endif %}
                                 </div>
                                 <input
@@ -654,15 +820,23 @@
                                         {{ req.get_type_display }}
                                     </div> {% endcomment %}
                                     <div class="loan-type"
-                                        style="display: inline;
-                                        {% if req.status == "approved" %}background:#9acd3245; {% elif req.status == "rejected" %}
-                                        background:#ff45002e;{% endif %}">
-                                        {{ req.get_status_display }}
+                                        class="loan-type badge {% if req.status == 'approved' %}bg-success{% elif req.status == 'rejected' %}bg-danger{% elif req.status == 'requested' %}bg-warning text-dark{% elif req.status == 'closed' %}bg-primary{% else %}bg-secondary{% endif %}"
+                                        style="display: inline;">
+                                        {% if req.status == 'rejected' and req.rejected_by_department %}
+                                            Rejected by {{ req.rejected_by_department }}
+                                        {% else %}
+                                            {{ req.get_status_display }}
+                                        {% endif %}
+                                        {% with progress=req.approval_progress %}
+                                            {% if progress.1 %}
+                                                ({{ progress.0 }}/{{ progress.1 }} {% trans "approved" %})
+                                            {% endif %}
+                                        {% endwith %}
                                     </div>
                                 </div>
                                 <div>
-                                    {% if req.status != "approved" %}
-                                        {% if perms.payroll.change_reimbursement or request.user.employee_get == req.employee_id %}
+                                    {% if req.status != "approved" and req.status != "closed" %}
+                                        {% if perms.payroll.change_reimbursement or request.user.employee_get == req.employee_id or req|can_approve:request.user.employee_get %}
                                             <a
                                                 hx-get="{% url 'create-reimbursement' %}?instance_id={{ req.id }}"
                                                 hx-target="#objectCreateModalTarget"
@@ -680,6 +854,30 @@
                                             ></a>
                                         {% endif %}
                                     {% endif %}
+                                    {# Finance close/payment + print icons beside actions (medical claims) #}
+                                    {% with user_dept=request.user.employee_get.employee_work_info.department_id %}
+                                    {% if user_dept and user_dept.department == 'Accounts & Finance' and req.type == 'medical_encashment' and req.status == 'approved' and req.last_approved_department == 'Accounts & Finance' %}
+                                        <a
+                                            href="{% url 'approve-reimbursements' %}?ids={{req.id}}&status=closed"
+                                            onclick="event.stopPropagation(); return confirm('Confirm payment completion?')"
+                                            class="btn btn-sm btn-primary me-1"
+                                            title="{% trans 'Payment Completion' %}"
+                                        >
+                                            <ion-icon name="checkmark-done-circle-outline"></ion-icon>
+                                        </a>
+                                        {% if req.attachment %}
+                                        <a
+                                            href="{{ req.attachment.url }}"
+                                            class="btn btn-sm btn-warning me-1"
+                                            title="{% trans 'Print' %}"
+                                            onclick="event.stopPropagation(); event.preventDefault(); return reimbursementPrint(this.href);"
+                                        >
+                                            <ion-icon name="print-outline"></ion-icon>
+                                        </a>
+                                        {% endif %}
+                                    {% endif %}
+                                    {% endwith %}
+
                                     {% if perms.payroll.delete_reimbursement  %}
                                     <a href="{% url "delete-reimbursement" %}?ids={{req.id}}" onclick="return confirm('Do you want to delete this record?')"
                                         title='{% trans "Delete" %}'
@@ -717,6 +915,12 @@
                             </div>
                             <h3 class="oh-faq-card__title">{{ req.title }}</h3>
                             <p class="oh-faq-card__desc">{{ req.description }}.</p>
+                            {% if req.reject_reason %}
+                              <p class="oh-faq-card__desc bg-danger p-2 text-white">
+                               Rejection Reason  : {{ req.reject_reason }}
+                                </p>
+                            {% endif %}
+
                             <span
                                 class="oh-card__footer--border-top pt-1"
                                 style="display: block"
@@ -756,10 +960,12 @@
                                 >
                                 {% endif %}
                             </span>
-                            {% if perms.payroll.change_reimbursement %}
-                            <form action="{% url 'approve-reimbursements' %}">
+                            {% if req|can_approve:request.user.employee_get %}
+                            <form action="{% url 'approve-reimbursements' %}" data-claimed-total="{{ req.total_claimed_amount|default:0 }}">
                                 <input type="hidden" name="ids" value="{{ req.id }}" />
                                 <input type="hidden" name="status" />
+                                <input type="hidden" name="reject_reason" />
+                                <input type="hidden" name="finance_comment" />
                                 {% if req.type == 'reimbursement' %}
                                 <p class="oh-faq-card__desc" style="height: 150px">
                                     <iframe
@@ -940,14 +1146,22 @@
                                         {{ req.get_type_display }}
                                     </div> {% endcomment %}
                                     <div class="loan-type"
-                                        style="display: inline;
-                                        {% if req.status == "approved" %}background:#9acd3245; {% elif req.status == "rejected" %}
-                                        background:#ff45002e;{% endif %}">
-                                        {{ req.get_status_display }}
+                                        class="loan-type badge {% if req.status == 'approved' %}bg-success{% elif req.status == 'rejected' %}bg-danger{% elif req.status == 'requested' %}bg-warning text-dark{% elif req.status == 'closed' %}bg-primary{% else %}bg-secondary{% endif %}"
+                                        style="display: inline;">
+                                        {% if req.status == 'rejected' and req.rejected_by_department %}
+                                            Rejected by {{ req.rejected_by_department }}
+                                        {% else %}
+                                            {{ req.get_status_display }}
+                                        {% endif %}
+                                        {% with progress=req.approval_progress %}
+                                            {% if progress.1 %}
+                                                ({{ progress.0 }}/{{ progress.1 }} {% trans "approved" %})
+                                            {% endif %}
+                                        {% endwith %}
                                     </div>
                                 </div>
                                 <div>
-                                    {% if req.status != "approved" %}
+                                    {% if req.status != "approved" and req.status != "closed" %}
                                         {% if perms.payroll.change_reimbursement or request.user.employee_get == req.employee_id %}
                                             <a
                                                 hx-get="{% url 'create-reimbursement' %}?instance_id={{ req.id }}"
@@ -967,14 +1181,14 @@
                                         {% endif %}
                                     {% endif %}
                                     {% if perms.payroll.delete_reimbursement  %}
-                                    <a href="{% url "delete-reimbursement" %}?ids={{req.id}}" onclick="return confirm('Do you want to delete this record?')"
-                                        title='{% trans "Delete" %}'><ion-icon
-                                            class="text-danger md hydrated"
-                                            name="trash-outline"
-                                            role="img"
-                                            aria-label="trash outline"
-                                        ></ion-icon
-                                    ></a>
+                                        <a href="{% url "delete-reimbursement" %}?ids={{req.id}}" onclick="return confirm('Do you want to delete this record?')"
+                                            title='{% trans "Delete" %}'><ion-icon
+                                                class="text-danger md hydrated"
+                                                name="trash-outline"
+                                                role="img"
+                                                aria-label="trash outline"
+                                            ></ion-icon
+                                        ></a>
                                     {% endif %}
                                 </div>
                             </div>
@@ -1002,6 +1216,12 @@
                             </div>
                             <h3 class="oh-faq-card__title">{{ req.title }}</h3>
                             <p class="oh-faq-card__desc">{{ req.description }}.</p>
+                            {% if req.reject_reason %}
+                              <p class="oh-faq-card__desc bg-danger p-2 text-white">
+                               Rejection Reason  : {{ req.reject_reason }}
+                                </p>
+                            {% endif %}
+
                             <span
                                 class="oh-card__footer--border-top pt-1"
                                 style="display: block"
@@ -1043,9 +1263,11 @@
                                 {% endif %}
                             </span>
                             {% if perms.payroll.change_reimbursement %}
-                            <form action="{% url 'approve-reimbursements' %}">
+                            <form action="{% url 'approve-reimbursements' %}" data-claimed-total="{{ req.total_claimed_amount|default:0 }}">
                                 <input type="hidden" name="ids" value="{{ req.id }}" />
                                 <input type="hidden" name="status" />
+                                <input type="hidden" name="reject_reason" />
+                                <input type="hidden" name="finance_comment" />
                                 {% if req.type == 'reimbursement' %}
                                 <p class="oh-faq-card__desc" style="height: 150px">
                                     <iframe
@@ -1235,30 +1457,6 @@
 
 
     <script>
-        function reimbursementConfirm(params, target, approve = false) {
-            Swal.fire({
-                text: params,
-                icon: "question",
-                showCancelButton: true,
-                confirmButtonColor: "#008000",
-                cancelButtonColor: "#d33",
-                confirmButtonText: "Confirm",
-                cancelButtonText: "Close",
-            }).then((result) => {
-                if (result.isConfirmed) {
-                    if (approve) {
-                        $(`${target} [name=amount]`).attr("required", true);
-                    }
-                    $(target + "Button").click();
-                    if (event.target.tagName.toLowerCase() === "form") {
-                        event.target.submit();
-                    } else if (event.target.tagName.toLowerCase() === "a") {
-                        window.location.href = event.target.href;
-                    }
-                } else {
-                }
-            });
-        }
         $(document).ready(function () {
             var activeTab = localStorage.getItem("activeTabReimbursment");
             if (activeTab != null) {
@@ -1283,5 +1481,9 @@
                 localStorage.setItem("activeTabReimbursment", activeTab);
             });
         });
-    </script>
+</script>
+
+<!-- Finance approval is handled via SweetAlert inside reimbursementConfirm() -->
 </div>
+
+<script>function reimbursementPrint(url){try{var w=window.open(url,'_blank','noopener'); if(!w){alert('Pop-up blocked'); return false;} var t=setInterval(function(){try{if(w.document && w.document.readyState==='complete'){clearInterval(t); w.focus(); w.print();}}catch(e){}},300); return false;}catch(e){return true;}}</script>

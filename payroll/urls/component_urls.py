@@ -160,6 +160,11 @@ urlpatterns = [
         name="reimbursement-individual-view",
     ),
     path(
+        "reimbursement-print/<int:instance_id>/",
+        component_views.print_medical_reimbursement,
+        name="reimbursement-print",
+    ),
+    path(
         "reimbursement-attachements/<int:instance_id>/",
         component_views.reimbursement_attachments,
         name="reimbursement-attachments",

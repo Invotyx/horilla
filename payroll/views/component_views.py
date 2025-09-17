@@ -83,6 +83,8 @@ from payroll.models.models import (
     Payslip,
     Reimbursement,
     ReimbursementMultipleAttachment,
+    ReimbursementConditionApproval,
+    ReimbursementrequestComment,
 )
 from payroll.threadings.mail import MailSendThread
 
@@ -1565,6 +1567,11 @@ def view_reimbursement(request):
     requests = filter_own_records(
         request, filter_object.qs, "payroll.view_reimbursement"
     )
+    if request.user.employee_get:
+        pending_ids = ReimbursementConditionApproval.objects.filter(
+            manager_id=request.user.employee_get
+        ).values_list("reimbursement_id", flat=True)
+        requests = (requests | Reimbursement.objects.filter(id__in=pending_ids)).distinct()
     reimbursements = requests.filter(type="reimbursement")
     leave_encashments = requests.filter(type="leave_encashment")
     bonus_encashment = requests.filter(type="bonus_encashment")
@@ -1585,9 +1592,11 @@ def view_reimbursement(request):
     
     medical_groups = []
     for emp in employees:
-        emp_claims = medical_encashments.filter(employee_id=emp)
+        emp_claims = medical_encashments.filter(employee_id=emp).prefetch_related(
+            "other_attachments"
+        )
         approved_total = (
-            emp_claims.filter(status="approved", allowance_on__gte=start, allowance_on__lt=end)
+            emp_claims.filter(status__in=["closed"], allowance_on__gte=start, allowance_on__lt=end)
             .aggregate(total=Sum("amount"))
             .get("total")
             or 0
@@ -1646,6 +1655,11 @@ def create_reimbursement(request):
         instance = Reimbursement.objects.filter(id=instance_id).first()
 
     if request.method == "POST":
+        # Block edits when medical claim is locked (any approval or approved/closed), except superuser
+        if instance and instance.type == "medical_encashment" and hasattr(instance, "is_locked"):
+            if instance.is_locked() and not request.user.is_superuser:
+                messages.error(request, _("Editing is locked for this medical claim."))
+                return HttpResponse(status=204, headers={"HX-Refresh": "true"})
         form = forms.ReimbursementForm(request.POST, request.FILES, instance=instance)
         if form.is_valid():
             instance, attachments = form.save()
@@ -1655,7 +1669,16 @@ def create_reimbursement(request):
             print("Form errors:", form.errors)
             # messages.error(request, "Reimbursement not saved successfully")
     else:
-        form = forms.ReimbursementForm(instance=instance)
+        initial = {}
+        _t = request.GET.get('type')
+        if _t:
+            initial['type'] = _t
+        # Block opening edit form if locked
+        if instance and instance.type == "medical_encashment" and hasattr(instance, "is_locked"):
+            if instance.is_locked() and not request.user.is_superuser:
+                messages.error(request, _("Editing is locked for this medical claim."))
+                return HttpResponse(status=204, headers={"HX-Refresh": "true"})
+        form = forms.ReimbursementForm(instance=instance, initial=initial)
 
     return render(request, "payroll/reimbursement/form.html", {"form": form})
 
@@ -1689,9 +1712,11 @@ def search_reimbursement(request):
     
     medical_groups = []
     for emp in employees:
-        emp_claims = medical_encashments.filter(employee_id=emp)
+        emp_claims = medical_encashments.filter(employee_id=emp).prefetch_related(
+            "other_attachments"
+        )
         approved_total = (
-            emp_claims.filter(status="approved", allowance_on__gte=start, allowance_on__lt=end)
+            emp_claims.filter(status="closed", allowance_on__gte=start, allowance_on__lt=end)
             .aggregate(total=Sum("amount"))
             .get("total")
             or 0
@@ -1772,7 +1797,7 @@ def medical_tab(request, emp_id):
 
     total_limit = 100000
     availed = (
-        claims_qs.filter(status="approved").aggregate(total=Sum("amount"))["total"]
+        claims_qs.filter(status="closed").aggregate(total=Sum("amount"))["total"]
         or 0
     )
     remaining = total_limit - availed
@@ -1829,9 +1854,7 @@ def get_assigned_leaves(request):
 @login_required
 @permission_required("payroll.change_reimbursement")
 def approve_reimbursements(request):
-    """
-    This method is used to approve or reject the reimbursement request
-    """
+    """Updated approval flow with multi-approver support"""
     ids = request.GET.getlist("ids")
     status = request.GET["status"]
     if status == "canceled":
@@ -1840,26 +1863,102 @@ def approve_reimbursements(request):
         eval_validate(request.GET.get("amount")) if request.GET.get("amount") else 0
     )
     amount = max(0, amount)
+    finance_comment = request.GET.get("finance_comment", "").strip()
+    reject_reason = request.GET.get("reject_reason", "").strip()
     reimbursements = Reimbursement.objects.filter(id__in=ids)
+    current_emp = request.user.employee_get
     if status and len(status):
         for reimbursement in reimbursements:
+            # Disallow any changes once closed
+            if reimbursement.status == "closed":
+                messages.error(request, _("This request is closed and cannot be changed."))
+                continue
+            # Update amount for non-medical types immediately
             if reimbursement.type == "leave_encashment":
-                reimbursement.amount = amount
-            if reimbursement.type == "medical_encashment":
                 reimbursement.amount = amount
             elif reimbursement.type == "bonus_encashment":
                 reimbursement.amount = amount
-            
-            emp = reimbursement.employee_id
-            
-            # check if the employee is is_superuser as only he can approve or reject the reimbursement
-            
-            
-            
-            if reimbursement.type == "medical_encashment":
-                # Perform validation only if status is being approved
-                if status == "approved":
 
+            emp = reimbursement.employee_id
+            approvals = ReimbursementConditionApproval.objects.filter(
+                reimbursement_id=reimbursement
+            )
+            if (
+                reimbursement.type == "medical_encashment" and approvals.exists()
+            ):
+                if status == "closed":
+                    dept = current_emp.get_department()
+                    if (
+                        reimbursement.status == "approved"
+                        and dept
+                        and getattr(dept, "department", None) == "Accounts & Finance"
+                        and reimbursement.last_approved_department()
+                        == "Accounts & Finance"
+                    ):
+                        reimbursement.status = "closed"
+                        reimbursement.save()
+                        messages.success(
+                            request,
+                            _(f"Request {reimbursement.get_status_display()} successfully"),
+                        )
+                    else:
+                        messages.error(
+                            request,
+                            _("You are not authorized to close this request"),
+                        )
+                    continue
+                approval = approvals.filter(
+                    manager_id=current_emp,
+                    is_approved=False,
+                    is_rejected=False,
+                ).first()
+                if not approval:
+                    messages.error(
+                        request, _("You are not authorized to approve this request")
+                    )
+                    continue
+                if approvals.filter(
+                    sequence__lt=approval.sequence,
+                    is_approved=False,
+                    is_rejected=False,
+                ).exists():
+                    messages.error(request, _("Previous approvals are pending"))
+                    continue
+                if status == "approved":
+                    # For medical claims, only Accounts & Finance approvers can edit amount
+                    dept = current_emp.get_department()
+                    if dept and getattr(dept, "department", None) == "Accounts & Finance":
+                        # Validate approved amount vs. claimed total
+                        claimed_total = reimbursement.total_claimed_amount or 0
+                        if not claimed_total:
+                            # fallback: compute from expenses if available
+                            try:
+                                expenses = reimbursement.medical_expenses or []
+                                claimed_total = sum(
+                                    float(e.get("expense_amount") or e.get("amount") or 0)
+                                    for e in expenses
+                                )
+                            except Exception:
+                                claimed_total = 0
+                        if claimed_total and amount > claimed_total:
+                            messages.error(
+                                request,
+                                _(
+                                    f"Approved amount (PKR {amount:,}) cannot exceed claimed total (PKR {claimed_total:,})."
+                                ),
+                            )
+                            continue
+                        # If approving a partial (< claimed), require finance comment
+                        if claimed_total and amount < claimed_total and not finance_comment:
+                            messages.error(
+                                request,
+                                _("Reason for Partial Amount is required when approving a partial amount."),
+                            )
+                            continue
+                        reimbursement.amount = amount
+                        # Save finance comment if provided
+                        if finance_comment:
+                            reimbursement.finance_comment = finance_comment[:500]
                     approved_claims_total = (
                         Reimbursement.objects.filter(
                             employee_id=emp,
@@ -1870,23 +1969,99 @@ def approve_reimbursements(request):
                         .aggregate(total=Sum("amount"))["total"]
                         or 0
                     )
-
                     if approved_claims_total >= 100000:
                         messages.error(
                             request,
-                            "No medical claim can be approved  once PKR 100,000 is fully used."
+                            "No medical claim can be approved  once PKR 100,000 is fully used.",
                         )
-                        return redirect(view_reimbursement)
-
+                        continue
                     if (approved_claims_total + amount) > 100000:
                         messages.error(
                             request,
-                            f"Total approved medical claims (including this one) cannot exceed PKR 100,000. "
-                            f"Currently approved: PKR {approved_claims_total:,}"
+                            f"Total approved medical claims (including this one) cannot exceed PKR 100,000. Currently approved: PKR {approved_claims_total:,}"
                         )
-                        return redirect(view_reimbursement)
-                    
+                        continue
+                    approval.is_approved = True
+                    approval.save()
+                    if not approvals.filter(
+                        is_approved=False, is_rejected=False
+                    ).exists():
+                        reimbursement.status = "approved"
+                        reimbursement.approved_by = current_emp
+                        reimbursement.save()
+                        messages.success(
+                            request,
+                            _(f"Request {reimbursement.get_status_display()} successfully"),
+                        )
+                        notify.send(
+                            current_emp,
+                            recipient=emp.employee_user_id,
+                            verb="Your reimbursement request has been approved.",
+                            verb_ar="تمت الموافقة على طلب استرداد نفقاتك.",
+                            verb_de="Ihr Rückerstattungsantrag wurde genehmigt.",
+                            verb_es="Se ha aprobado tu solicitud de reembolso.",
+                            verb_fr="Votre demande de remboursement a été approuvée.",
+                            redirect=reverse("view-reimbursement") + f"?id={reimbursement.id}",
+                            icon="checkmark",
+                        )
+                else:
+                    if not reject_reason:
+                        messages.error(request, _("Rejection reason is required"))
+                        continue
+                    if len(reject_reason) > 250:
+                        messages.error(
+                            request,
+                            _("Rejection reason must be 250 characters or fewer"),
+                        )
+                        continue
+                    approval.is_rejected = True
+                    approval.reject_reason = reject_reason
+                    approval.save()
+                    department = approval.manager_id.get_department()
+                    reimbursement.status = "rejected"
+                    reimbursement.rejected_by_department = (
+                        department.department if department else None
+                    )
+                    reimbursement.reject_reason = reject_reason
+                    reimbursement.save()
+                    ReimbursementrequestComment.objects.create(
+                        request_id=reimbursement,
+                        employee_id=current_emp,
+                        comment=reject_reason,
+                    )
+                    messages.success(
+                        request,
+                        _(f"Request {reimbursement.get_status_display()} successfully"),
+                    )
+                    message = (
+                        f"Your claim has been rejected by {reimbursement.rejected_by_department}. "
+                        f"Reason: {reject_reason}"
+                    )
+                    notify.send(
+                        current_emp,
+                        recipient=emp.employee_user_id,
+                        verb=message,
+                        verb_ar=message,
+                        verb_de=message,
+                        verb_es=message,
+                        verb_fr=message,
+                        redirect=reverse("view-reimbursement") + f"?id={reimbursement.id}",
+                        icon="checkmark",
+                    )
+                continue
+
             reimbursement.status = status
+            if status == "rejected" and reject_reason:
+                reimbursement.reject_reason = reject_reason
+                dept = current_emp.get_department()
+                reimbursement.rejected_by_department = (
+                    dept.department if dept else None
+                )
+                ReimbursementrequestComment.objects.create(
+                    request_id=reimbursement,
+                    employee_id=current_emp,
+                    comment=reject_reason,
+                )
             reimbursement.save()
             if reimbursement.status == "requested":
                 if not (messages.get_messages(request)._queued_messages):
@@ -1896,73 +2071,198 @@ def approve_reimbursements(request):
                     request,
                     _(f"Request {reimbursement.get_status_display()} successfully"),
                 )
-        if status == "rejected":
-            notify.send(
-                request.user.employee_get,
-                recipient=emp.employee_user_id,
-                verb="Your reimbursement request has been rejected.",
-                verb_ar="تم رفض طلب استرداد النفقات الخاص بك.",
-                verb_de="Ihr Erstattungsantrag wurde abgelehnt.",
-                verb_es="Su solicitud de reembolso ha sido rechazada.",
-                verb_fr="Votre demande de remboursement a été rejetée.",
-                redirect=reverse("view-reimbursement") + f"?id={reimbursement.id}",
-                icon="checkmark",
-            )
-        else:
-            notify.send(
-                request.user.employee_get,
-                recipient=emp.employee_user_id,
-                verb="Your reimbursement request has been approved.",
-                verb_ar="تمت الموافقة على طلب استرداد نفقاتك.",
-                verb_de="Ihr Rückerstattungsantrag wurde genehmigt.",
-                verb_es="Se ha aprobado tu solicitud de reembolso.",
-                verb_fr="Votre demande de remboursement a été approuvée.",
-                redirect=reverse("view-reimbursement") + f"?id={reimbursement.id}",
-                icon="checkmark",
-            )
+            if status == "rejected":
+                if reject_reason:
+                    message = (
+                        f"Your claim has been rejected by {reimbursement.rejected_by_department}. "
+                        f"Reason: {reject_reason}"
+                    )
+                else:
+                    message = "Your reimbursement request has been rejected."
+                notify.send(
+                    request.user.employee_get,
+                    recipient=emp.employee_user_id,
+                    verb=message,
+                    verb_ar=message,
+                    verb_de=message,
+                    verb_es=message,
+                    verb_fr=message,
+                    redirect=reverse("view-reimbursement") + f"?id={reimbursement.id}",
+                    icon="checkmark",
+                )
+            else:
+                notify.send(
+                    request.user.employee_get,
+                    recipient=emp.employee_user_id,
+                    verb="Your reimbursement request has been approved.",
+                    verb_ar="تمت الموافقة على طلب استرداد نفقاتك.",
+                    verb_de="Ihr Rückerstattungsantrag wurde genehmigt.",
+                    verb_es="Se ha aprobado tu solicitud de reembolso.",
+                    verb_fr="Votre demande de remboursement a été approuvée.",
+                    redirect=reverse("view-reimbursement") + f"?id={reimbursement.id}",
+                    icon="checkmark",
+                )
     return redirect(view_reimbursement)
 
 
 @login_required
-@permission_required("payroll.delete_reimbursement")
 def delete_reimbursements(request):
     """
     This method is used to delete the reimbursements
     """
     ids = request.GET.getlist("ids")
     reimbursements = Reimbursement.objects.filter(id__in=ids)
+    deleted = 0
+    blocked = 0
     for reimbursement in reimbursements:
-        user = reimbursement.employee_id.employee_user_id
-    reimbursements.delete()
-    messages.success(request, "Reimbursements deleted")
-    notify.send(
-        request.user.employee_get,
-        recipient=user,
-        verb="Your reimbursement request has been deleted.",
-        verb_ar="تم حذف طلب استرداد نفقاتك.",
-        verb_de="Ihr Rückerstattungsantrag wurde gelöscht.",
-        verb_es="Tu solicitud de reembolso ha sido eliminada.",
-        verb_fr="Votre demande de remboursement a été supprimée.",
-        redirect="/",
-        icon="trash",
-    )
+
+        is_owner = (
+            request.user.is_authenticated
+            and reimbursement.employee_id
+            and reimbursement.employee_id.employee_user_id == request.user
+        )
+        allowed_by_owner = is_owner and reimbursement.status == "requested"
+        allowed_by_perm = request.user.has_perm("payroll.delete_reimbursement")
+        if not (allowed_by_owner or allowed_by_perm or request.user.is_superuser):
+            blocked += 1
+            continue
+
+        if (
+            reimbursement.type == "medical_encashment"
+            and hasattr(reimbursement, "is_locked")
+            and reimbursement.is_locked()
+            and not request.user.is_superuser
+        ):
+            blocked += 1
+            continue
+        reimbursement.delete()
+        deleted += 1
+        recipient = (
+            reimbursement.employee_id.employee_user_id
+            if reimbursement.employee_id and reimbursement.employee_id.employee_user_id
+            else None
+        )
+        if recipient:
+            notify.send(
+                request.user.employee_get,
+                recipient=recipient,
+                verb="Your reimbursement request has been deleted.",
+                verb_ar="تم حذف طلب استرداد نفقاتك.",
+                verb_de="Ihr Rückerstattungsantrag wurde gelöscht.",
+                verb_es="Tu solicitud de reembolso ha sido eliminada.",
+                verb_fr="Votre demande de remboursement a été supprimée.",
+                redirect="/",
+                icon="trash",
+            )
+    if deleted:
+        messages.success(request, _("Reimbursements deleted"))
+    if blocked:
+        messages.error(request, _("Some claims cannot be deleted."))
 
     return redirect(view_reimbursement)
 
 
 @login_required
 @owner_can_enter("payroll.view_reimbursement", Reimbursement, True)
+def print_medical_reimbursement(request, instance_id):
+    """Render a printable medical reimbursement form for a specific claim."""
+    reimbursement = Reimbursement.objects.get(id=instance_id)
+    if reimbursement.type != "medical_encashment":
+        messages.error(request, _("Printing is only available for medical claims."))
+        return redirect(view_reimbursement)
+    # Normalize expenses to safe keys for template rendering
+    items = []
+    total = 0.0
+    try:
+        expenses = reimbursement.medical_expenses or []
+        for e in expenses:
+            # e is expected to be a dict
+            desc = (
+                (e.get("description") or e.get("expense_type") or e.get("provider") or e.get("name") or "-")
+            )
+            amt_raw = e.get("expense_amount")
+            if amt_raw is None:
+                amt_raw = e.get("amount")
+            try:
+                amt = float(amt_raw) if amt_raw is not None else 0.0
+            except (ValueError, TypeError):
+                amt = 0.0
+            total += amt
+            items.append({"desc": desc, "amt": amt, "raw": e})
+    except Exception:
+        items = []
+    # Claimed total prefers explicit field, falls back to computed total
+    claimed_total = (
+        reimbursement.total_claimed_amount if reimbursement.total_claimed_amount else total
+    )
+    try:
+        approved_amount = float(reimbursement.amount or 0)
+    except Exception:
+        approved_amount = 0.0
+    remaining = claimed_total - approved_amount
+    if remaining < 0:
+        remaining = 0.0
+    return render(
+        request,
+        "payroll/reimbursement/medical_print.html",
+        {
+            "reimbursement": reimbursement,
+            "items": items,
+            "items_total": total,
+            "claimed_total": claimed_total,
+            "remaining_balance": remaining,
+        },
+    )
 def reimbursement_individual_view(request, instance_id):
     """
     This method is used to render the individual view of reimbursement object
     """
     reimbursement = Reimbursement.objects.get(id=instance_id)
+    # Build a single, de-duplicated list of attachments (primary + others)
+    combined_attachments = []
+    seen_urls = set()
+    try:
+        if getattr(reimbursement, "attachment", None):
+            url = reimbursement.attachment.url
+            if url not in seen_urls:
+                seen_urls.add(url)
+                combined_attachments.append(
+                    {
+                        "url": url,
+                        "name": getattr(reimbursement.attachment, "name", "").replace(
+                            "payroll/reimbursements/", ""
+                        ),
+                    }
+                )
+        for doc in reimbursement.other_attachments.all():
+            f = getattr(doc, "attachment", None)
+            if not f:
+                continue
+            url = f.url
+            if url in seen_urls:
+                continue
+            seen_urls.add(url)
+            combined_attachments.append(
+                {
+                    "url": url,
+                    "name": getattr(f, "name", "").replace(
+                        "payroll/reimbursements/", ""
+                    ),
+                }
+            )
+    except Exception:
+        # Fail-safe: if anything goes wrong above, fall back to showing whatever is available
+        combined_attachments = []
     requests_ids_json = request.GET.get("instances_ids")
+    # Default navigation ids to None to avoid UnboundLocalError when not provided
+    previous_id = None
+    next_id = None
     if requests_ids_json:
         requests_ids = json.loads(requests_ids_json)
         previous_id, next_id = closest_numbers(requests_ids, instance_id)
     context = {
         "reimbursement": reimbursement,
+        "attachments_combined": combined_attachments,
         "instances_ids": requests_ids_json,
         "previous": previous_id,
         "next": next_id,
@@ -1995,8 +2295,12 @@ def delete_attachments(request, _reimbursement_id):
     This mehtod is used to delete the attachements
     """
     ids = request.GET.getlist("ids")
+    reimbursement = Reimbursement.objects.filter(id=_reimbursement_id).first()
+    if reimbursement and reimbursement.type == "medical_encashment" and reimbursement.status != "requested":
+        messages.error(request, _("Attachments can only be deleted while the medical claim is in 'Requested' status."))
+        return redirect(view_reimbursement)
     ReimbursementMultipleAttachment.objects.filter(id__in=ids).delete()
-    messages.success(request, "Attachment deleted")
+    messages.success(request, _("Attachment deleted"))
     return redirect(view_reimbursement)
 
 
@@ -2434,3 +2738,4 @@ def payslip_detailed_export(request):
     wb.save(response)
 
     return response
+

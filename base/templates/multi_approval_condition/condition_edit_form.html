@@ -38,13 +38,29 @@
     <div class="row">
       <div class="col-12 col-sm-12 col-md-6 col-lg-6">
         <div class="oh-input__group">
+          <label class="oh-input__label" for="{{form.condition_type.id_for_label}}"
+            >{% trans "Condition" %}</label
+          >
+          {{ form.condition_type }}
+          {{ form.condition_type.errors }}
+        </div>
+      </div>
+      <div class="col-12 col-sm-12 col-md-6 col-lg-6">
+        <div class="oh-input__group">
           <label class="oh-input__label" for="{{form.department.id_for_label}}"
             >{% trans "Department" %}</label
           >
           {{ form.department }}
           {{ form.department.errors }}
+          <div class="mt-2">
+            {{ form.all_departments }} {{ form.all_departments.label_tag }}
+          </div>
         </div>
       </div>
+    </div>
+    {% if not form.condition_field.is_hidden or not form.condition_operator.is_hidden %}
+    <div class="row leave-field">
+      {% if not form.condition_field.is_hidden %}
       <div class="col-12 col-sm-12 col-md-6 col-lg-6">
         <div class="oh-input__group">
           <label
@@ -56,8 +72,8 @@
           {{ form.condition_field.errors }}
         </div>
       </div>
-    </div>
-    <div class="row">
+      {% endif %}
+      {% if not form.condition_operator.is_hidden %}
       <div class="col-12 col-sm-12 col-md-6 col-lg-6">
         <div class="oh-input__group">
           <label
@@ -70,6 +86,11 @@
           {{ form.condition_operator.errors }}
         </div>
       </div>
+      {% endif %}
+    </div>
+    {% endif %}
+    {% if not form.condition_value.is_hidden %}
+    <div class="row leave-field">
       <div class="col-12 col-sm-12 col-md-6 col-lg-6" id="conditionValueDiv">
         {% if condition.condition_operator == "range" %}
         <div class="row" id="conditionRangeValueRow">
@@ -112,6 +133,7 @@
         {% endif %}
       </div>
     </div>
+    {% endif %}
     <div class="row">
       <div class="col-12 col-sm-12 col-md-6 col-lg-6">
         <div class="oh-input__group">
@@ -175,7 +197,18 @@
   </form>
 </div>
 <script>
-  $(document).ready(function () {
+  function toggleConditionFields() {
+    const typeSelect = document.getElementById('id_condition_type');
+    const leaveFields = document.querySelectorAll('.leave-field');
+    if (!typeSelect) return;
+    const hide = typeSelect.value === 'medical_reimbursement';
+    leaveFields.forEach(function (el) {
+      el.style.display = hide ? 'none' : '';
+    });
+  }
+  document.addEventListener('DOMContentLoaded', function () {
+    toggleConditionFields();
+    document.getElementById('id_condition_type').addEventListener('change', toggleConditionFields);
     $("select").on("select2:select", function (e) {
       $(this).closest("select")[0].dispatchEvent(new Event("change"));
     });

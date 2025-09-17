@@ -1,0 +1,128 @@
+{% load i18n %}
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>{% trans "Medical Reimbursement" %} - {{ reimbursement.employee_id }}</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 24px; }
+        .header { display:flex; justify-content: space-between; align-items:center; margin-bottom: 12px; }
+        .title { font-size: 20px; font-weight: 700; }
+        .meta { font-size: 12px; color: #555; }
+        .section { margin-top: 16px; }
+        .label { font-weight: 600; }
+        table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+        th, td { border: 1px solid #ddd; padding: 8px; font-size: 13px; }
+        th { background: #f6f8fa; text-align: left; }
+        .right { text-align: right; }
+        .muted { color: #666; }
+        .footer { margin-top: 28px; display:flex; justify-content: space-between; }
+        .sign { width: 30%; border-top: 1px solid #333; text-align: center; padding-top: 6px; }
+        @media print { .no-print { display: none; } }
+    </style>
+</head>
+<body onload="window.print()">
+    <div class="header">
+        <div class="title">{% trans "Medical Reimbursement Claim" %}</div>
+        <div class="meta">{% trans "Date" %}: {{ reimbursement.allowance_on }}</div>
+    </div>
+
+    <div class="section">
+        <div><span class="label">{% trans "Employee" %}:</span> {{ reimbursement.employee_id.get_full_name|default:reimbursement.employee_id }}</div>
+        <div class="muted">
+            {% with dept=reimbursement.employee_id.get_department %}
+                {% if dept %}{{ dept.department }}{% endif %}
+            {% endwith %}
+            {% if reimbursement.employee_id.badge_id %}
+                &nbsp;|&nbsp;{% trans "Employee ID" %}: {{ reimbursement.employee_id.badge_id }}
+            {% endif %}
+            {% if reimbursement.employee_id.get_email %}
+                &nbsp;|&nbsp;{% trans "Email" %}: {{ reimbursement.employee_id.get_email }}
+            {% endif %}
+        </div>
+
+        <div><span class="label">{% trans "Claim For" %}:</span> {{ reimbursement.get_claim_for_display }}{% if reimbursement.dependent_name %} - {{ reimbursement.dependent_name }}{% endif %}</div>
+        <div><span class="label">{% trans "Title" %}:</span> {{ reimbursement.title }}</div>
+        {% if reimbursement.description %}
+        <div><span class="label">{% trans "Description" %}:</span> {{ reimbursement.description }}</div>
+        {% endif %}
+    </div>
+
+    <div class="section">
+        <div class="label">{% trans "Expenses" %}</div>
+        <table>
+            <thead>
+                <tr>
+                    <th>{% trans "Expense Date" %}</th>
+                    <th>{% trans "Type" %}</th>
+                    <th>{% trans "Hospital/Provider" %}</th>
+                    <th class="right">{% trans "Amount" %}</th>
+                    <th>{% trans "Receipt No/Date" %}</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% if items %}
+                    {% for item in items %}
+                    <tr>
+                        <td>{{ item.raw.expense_date|default:"-" }}</td>
+                        <td>{{ item.raw.expense_type|default:"-" }}</td>
+                        <td>{{ item.raw.provider|default:"-" }}</td>
+                        <td class="right">{{ item.amt }}</td>
+                        <td>{{ item.raw.receipt_no_date|default:"-" }}</td>
+                    </tr>
+                    {% endfor %}
+                {% else %}
+                    <tr>
+                        <td colspan="2" class="muted">{% trans "No itemized expenses provided" %}</td>
+                    </tr>
+                {% endif %}
+            </tbody>
+            <tfoot>
+                <tr>
+                    <th colspan="3" class="right">{% trans "Total Amount Requested" %}</th>
+                    <th class="right">{{ claimed_total }}</th>
+                    <th></th>
+                </tr>
+                <tr>
+                    <th colspan="3" class="right">{% trans "Approved Amount" %}</th>
+                    <th class="right">{{ reimbursement.amount }}</th>
+                    <th></th>
+                </tr>
+            
+            </tfoot>
+        </table>
+    </div>
+
+    <div class="section mb-5">
+        <div><span class="label">{% trans "Status" %}:</span> {{ reimbursement.get_status_display }}</div>
+        {% if reimbursement.approved_by %}
+        <div class="muted">{% trans "Approved By" %}: {{ reimbursement.approved_by }}</div>
+        {% endif %}
+        {% if reimbursement.finance_comment %}
+        <div><span class="label">{% trans "Reason for Partial Amount" %}:</span> {{ reimbursement.finance_comment }}</div>
+        {% endif %}
+    </div>
+
+    {% comment %} <div class="section">
+        <div class="label">{% trans "Attachments" %}</div>
+        <div class="muted">
+            {% if reimbursement.attachment %}
+            <div>{{ reimbursement.attachment.name|cut:'payroll/reimbursements/' }}</div>
+            {% endif %}
+            {% for doc in reimbursement.other_attachments.all %}
+            <div>{{ doc.attachment.name|cut:'payroll/reimbursements/' }}</div>
+            {% endfor %}
+        </div>
+    </div> {% endcomment %}
+
+    <div class="footer">
+        <div class="sign">{% trans "Employee Signature" %}</div>
+        <div class="sign">{% trans "Accounts & Finance" %}</div>
+    </div>
+
+    <div class="no-print" style="margin-top:16px;">
+        <button onclick="window.print()">{% trans "Print" %}</button>
+    </div>
+</body>
+</html>
+

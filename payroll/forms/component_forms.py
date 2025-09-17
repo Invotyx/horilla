@@ -11,6 +11,7 @@ from django.db.models import Sum
 from django import forms
 from django.apps import apps
 from django.template.loader import render_to_string
+from django.core.exceptions import ObjectDoesNotExist
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
@@ -36,7 +37,9 @@ from payroll.models.models import (
     PayslipAutoGenerate,
     Reimbursement,
     ReimbursementMultipleAttachment,
+    ReimbursementConditionApproval,
 )
+from base.models import MultipleApprovalCondition
 from payroll.widgets import component_widgets as widget
 
 logger = logging.getLogger(__name__)
@@ -793,7 +796,7 @@ class ReimbursementForm(ModelForm):
     class Meta:
         model = Reimbursement
         fields = "__all__"
-        exclude = ["is_active"]
+        exclude = ["is_active", "rejected_by_department", "reject_reason"]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -804,6 +807,14 @@ class ReimbursementForm(ModelForm):
         if not self.instance.pk:
             self.initial["allowance_on"] = str(datetime.date.today())
 
+        # Default to medical form if requested via query
+        try:
+            if self.request and not self.instance.pk and self.request.GET.get("type"):
+                self.initial["type"] = self.request.GET.get("type")
+        except Exception:
+            amount_val = -1
+            pass
+
         self.initial["employee_id"] = self.employee.id if self.employee else None
 
         self.configure_fields()
@@ -813,13 +824,21 @@ class ReimbursementForm(ModelForm):
         employee_qs = self.fields["employee_id"].queryset
         employee_id = self.data.get("employee_id") if self.data else None
 
+        # Fallback to GET param to support HX reloads on employee switch
+        if not employee_id and getattr(self, "request", None):
+            try:
+                employee_id = self.request.GET.get("employee_id")
+            except Exception:                    
+                amount_val = -1
+                employee_id = None
+
         if employee_id and (emp := employee_qs.filter(id=employee_id).first()):
             return emp
+        if self.instance and self.instance.pk:
+            return self.instance.employee_id
 
         if self.request and (emp := self.request.user.employee_get):
-            if not self.instance.pk and emp in employee_qs:
-                return emp
-            if self.instance.pk and emp.id == self.instance.employee_id:
+            if emp in employee_qs:
                 return emp
 
         return employee_qs.first()
@@ -851,6 +870,20 @@ class ReimbursementForm(ModelForm):
 
         self.fields["attachment"] = MultipleFileField(label="Attachments")
         self.fields["attachment"].widget.attrs["accept"] = ".jpg, .jpeg, .png, .pdf"
+        self.fields["attachment"].widget.attrs["multiple"] = True
+
+        # Medical-specific optional field setup (exist only after model update)
+        if "claim_for" in self.fields:
+            self.fields["claim_for"].required = False
+        if "dependent_name" in self.fields:
+            self.fields["dependent_name"].required = False
+        if "medical_expenses" in self.fields:
+            self.fields["medical_expenses"].widget = forms.HiddenInput()
+            self.fields["medical_expenses"].required = False
+        if "total_claimed_amount" in self.fields:
+            # read-only in UI, still posted for server-side checks
+            self.fields["total_claimed_amount"].required = False
+            self.fields["total_claimed_amount"].widget.attrs.update({"readonly": True})
 
         self.exclude_fields_by_type(exclude_fields)
 
@@ -877,28 +910,34 @@ class ReimbursementForm(ModelForm):
     def exclude_fields_by_type(self, exclude_fields):
         """Determine which fields to exclude based on type."""
         type = self.data.get("type") if self.data else None
+        if not type and getattr(self, "request", None):
+            try:
+                type = self.request.GET.get("type") or type
+            except Exception:
+                amount_val = -1              
+                pass
         if not type and self.instance:
             type = self.instance.type
             
         is_edit = self.instance and self.instance.pk
 
-        if type == "reimbursement" and is_edit:
+        if type == "reimbursement":
             exclude_fields += [
                 "leave_type_id",
                 "cfd_to_encash",
                 "ad_to_encash",
                 "bonus_to_encash",
             ]
-        elif type == "medical_encashment" and (is_edit or self.data):
+        elif type == "medical_encashment":
             exclude_fields += [
                 "leave_type_id",
                 "cfd_to_encash",
                 "ad_to_encash",
                 "bonus_to_encash",
             ]
-        elif type == "leave_encashment" and (is_edit or self.data):
+        elif type == "leave_encashment":
             exclude_fields += ["attachment", "amount", "bonus_to_encash"]
-        elif type == "bonus_encashment" and (is_edit or self.data):
+        elif type == "bonus_encashment":
             exclude_fields += [
                 "attachment",
                 "amount",
@@ -907,42 +946,194 @@ class ReimbursementForm(ModelForm):
                 "ad_to_encash",
             ]
 
+        # Hide medical-only fields for non-medical types
+        if type != "medical_encashment":
+            exclude_fields += [
+                "claim_for",
+                "dependent_name",
+                "medical_expenses",
+                "total_claimed_amount",
+            ]
+
+        # Keep type visible to allow switching forms in modal
+
         if is_edit:
             exclude_fields += ["type", "employee_id"]
 
     def as_p(self):
-        """
-        Render the form fields as HTML table rows with Bootstrap styling.
-        """
-        context = {"form": self}
-        table_html = render_to_string("common_form.html", context)
-        return table_html
+        """Render generic or medical-specific form layout."""
+        # determine type from data/instance/initial
+        _type = None
+        if self.data:
+            _type = self.data.get("type")
+        # Fallback to GET in case of HX reloads
+        if not _type and getattr(self, "request", None):
+            try:
+                _type = self.request.GET.get("type") or _type
+            except Exception:
+                amount_val = -1
+                pass
+        if not _type and getattr(self.instance, "type", None):
+            _type = self.instance.type
+        if not _type:
+            _type = self.initial.get("type")
+
+        context = {"form": self, "employee": self.employee}
+        if _type == "medical_encashment":
+            return render_to_string("payroll/reimbursement/medical_form_fields.html", context)
+        return render_to_string("common_form.html", context)
 
     def clean(self):
         cleaned_data = super().clean()
 
-        type_ = cleaned_data.get("type") or (
-            self.instance.type if self.instance else None
+        # Resolve type and employee robustly so create works for normal users
+        type_ = (
+            cleaned_data.get("type")
+            or (self.data.get("type") if getattr(self, "data", None) else None)
+            or self.initial.get("type")
+            or (self.instance.type if self.instance else None)
         )
-        employee = cleaned_data.get("employee_id") or (
-            self.instance.employee_id if self.instance else None
-        )
+        employee = cleaned_data.get("employee_id") or getattr(self, "employee", None)
+        if not employee and self.instance:
+            try:
+                employee = self.instance.employee_id
+            except ObjectDoesNotExist:
+                employee = None
+        if employee and not cleaned_data.get("employee_id"):
+            cleaned_data["employee_id"] = employee
         amount = cleaned_data.get("amount")
 
         if not type_ or not employee:
             return cleaned_data
 
         if type_ == 'medical_encashment':
+            # Build total from JSON expense entries (if provided)
+            expenses_raw = (
+                cleaned_data.get("medical_expenses")
+                or (self.data.get("medical_expenses") if self.data else None)
+            )
+
+            print(">> cleaned_data.medical_expenses:", cleaned_data.get("medical_expenses"))
+            print(">> self.data.medical_expenses:", self.data.get("medical_expenses") if self.data else None)
+
+            if getattr(self, "request", None):
+                # Get *all* values for medical_expenses (handles duplicates like JSON + null)
+                raw_list = self.request.POST.getlist("medical_expenses")
+                print(">> POST medical_expenses list:", raw_list)
+                expenses_raw = next((val for val in raw_list if val and val != "null"), expenses_raw)
+
+            import json as _json
+            expenses = []
+            if isinstance(expenses_raw, str) and expenses_raw.strip():
+                try:
+                    parsed = _json.loads(expenses_raw)
+                    # Filter out completely empty rows
+                    expenses = [
+                        it for it in (parsed or [])
+                        if any(str((it or {}).get(k, "")).strip() for k in [
+                            "expense_type", "provider", "expense_date", "expense_amount", "receipt_no_date"
+                        ])
+                    ]
+                except Exception:
+                    amount_val = -1
+                    self.add_error("medical_expenses", _("Invalid expense data"))
+            elif isinstance(expenses_raw, list):
+                expenses = [
+                    it for it in (expenses_raw or [])
+                    if any(str((it or {}).get(k, "")).strip() for k in [
+                        "expense_type", "provider", "expense_date", "expense_amount", "receipt_no_date"
+                    ])
+                ]
+
+            # client-side ensures 1..5, but enforce server-side too
+            if not expenses:
+                self.add_error("medical_expenses", _("Add at least 1 expense"))
+            if expenses and len(expenses) > 5:
+                self.add_error("medical_expenses", _("Maximum 5 expenses allowed"))
+
+            total = 0
+            for idx, item in enumerate(expenses or []):
+                etype = (item or {}).get("expense_type")
+                provider = (item or {}).get("provider")
+                edate = (item or {}).get("expense_date")
+                amount_val = None
+                try:
+                    amt_str = str((item or {}).get("expense_amount", "")).replace(",", "").strip()
+                    amount_val = float(amt_str)
+                except Exception:
+                    amount_val = -1
+                receipt = (item or {}).get("receipt_no_date")
+                if not etype:
+                    self.add_error("medical_expenses", _("Expense #{}: Type is required".format(idx+1)))
+                if not provider:
+                    self.add_error("medical_expenses", _("Expense #{}: Provider/Hospital is required".format(idx+1)))
+                if not edate:
+                    self.add_error("medical_expenses", _("Expense #{}: Expense Date is required".format(idx+1)))
+                else:
+                    try:
+                        y, m, d = [int(x) for x in str(edate).split("-")]
+                        exd = datetime.date(y, m, d)
+                        if exd > datetime.date.today():
+                            self.add_error("medical_expenses", _("Expense #{}: Date cannot be in the future".format(idx+1)))
+                    except Exception:
+                        amount_val = -1
+                        self.add_error("medical_expenses", _("Expense #{}: Invalid date".format(idx+1)))
+                if amount_val is None or amount_val <= 0:
+                    self.add_error("medical_expenses", _("Expense #{}: Amount must be greater than 0".format(idx+1)))
+                if receipt is None or str(receipt).strip() == "":
+                    self.add_error("medical_expenses", _("Expense #{}: Receipt No/Date is required".format(idx+1)))
+                else:
+                    if not str(receipt).strip().isdigit():
+                        self.add_error("medical_expenses", _("Expense #{}: Receipt must be numeric".format(idx+1)))
+                total += amount_val if amount_val and amount_val > 0 else 0
+
+            # Persist filtered expenses back so instance saves it
+            if expenses:
+                cleaned_data["medical_expenses"] = expenses
+                # Ensure amount reflects total of expenses (server-authoritative)
+                try:
+                    cleaned_data["amount"] = round(total, 2)
+                except Exception:
+                    cleaned_data["amount"] = total
+
+            # Validate claim_for and dependent name
+            claim_for = cleaned_data.get("claim_for") or self.data.get("claim_for")
+            dependent_name = cleaned_data.get("dependent_name") or self.data.get("dependent_name")
+            if not claim_for:
+                self.add_error("claim_for", _("This field is required"))
+            elif str(claim_for).lower() != "self" and not dependent_name:
+                self.add_error("dependent_name", _("Dependent Name is required"))
+
+            # Validate attachments: at least 1, max 5, types and size
+            attachments = self.files.getlist("attachment")
+            if not attachments and not (self.instance and self.instance.attachment):
+                self.add_error("attachment", _("At least 1 supporting document is required"))
+            allowed_ext = {".pdf", ".jpg", ".jpeg", ".png"}
+            max_files = 5
+            max_size = 5 * 1024 * 1024
+            if attachments:
+                if len(attachments) > max_files:
+                    self.add_error("attachment", _("Maximum 5 files allowed"))
+                for f in attachments:
+                    ext = ("." + f.name.split(".")[-1].lower()) if "." in f.name else ""
+                    if ext not in allowed_ext:
+                        self.add_error("attachment", _("Only PDF/JPG/JPEG/PNG allowed"))
+                    if getattr(f, "size", 0) and f.size > max_size:
+                        self.add_error("attachment", _("Each file must be ≤ 5 MB"))
+
+            # Propagate computed totals to amount fields for further checks and saving
+            cleaned_data["total_claimed_amount"] = total
+            cleaned_data["amount"] = total
+
+            # Now perform existing policy validations using computed 'amount'
+            amount = total
             if amount is None:
-                self.add_error("amount", "Amount is required ")
+                self.add_error("amount", _("Amount is required"))
             else:
                 if amount > 100000:
-                
-                    self.add_error("amount", "Amount cannot exceed PKR 100,000")
-
+                    self.add_error("amount", _("Amount cannot exceed PKR 100,000"))
                 if amount <= 0:
-                    
-                    self.add_error("amount", "Amount cannot be less than or equal to PKR 0")
+                    self.add_error("amount", _("Amount cannot be less than or equal to PKR 0"))
 
                 approved_claims_total = (
                     Reimbursement.objects.filter(
@@ -950,20 +1141,19 @@ class ReimbursementForm(ModelForm):
                         type="medical_encashment",
                         status="approved",
                     )
-                    .exclude(id=self.instance.pk)  # Exclude current instance in case of edit
+                    .exclude(id=self.instance.pk)
                     .aggregate(total=Sum("amount"))["total"]
                     or 0
                 )
-
                 if approved_claims_total >= 100000:
                     self.add_error(
                         "amount",
-                        "No medical claim can be submitted once PKR 100,000 is fully used.",
+                        _("No medical claim can be submitted once PKR 100,000 is fully used."),
                     )
                 elif (approved_claims_total + amount) > 100000:
                     self.add_error(
                         "amount",
-                        f"Total approved medical claims (including this one) cannot exceed PKR 100,000. Currently approved: PKR {approved_claims_total:,}",
+                        _("Total approved medical claims (including this one) cannot exceed PKR 100,000. Currently approved: PKR {}".format(approved_claims_total)),
                     )
                     
         elif type_ == "bonus_encashment":
@@ -1040,27 +1230,131 @@ class ReimbursementForm(ModelForm):
         is_new = not self.instance.pk
         attachments = self.files.getlist("attachment")
 
+        # Process requested removals of existing attachments (from edit UI)
+        try:
+            remove_primary = (self.data.get("remove_primary_attachment") in ("1", 1, True, "true"))
+            remove_ids_csv = (self.data.get("remove_existing_attachments") or "").strip()
+            remove_ids = [int(x) for x in remove_ids_csv.split(",") if x.strip().isdigit()]
+        except Exception:
+            remove_primary = False
+            remove_ids = []
+
         if attachments:
-            self.instance.attachment = attachments[0]
+            # Do not overwrite existing primary unless user requested removal
+            if not (getattr(self.instance, "attachment", None) and not remove_primary):
+                # Save the first file as the primary attachment
+                self.instance.attachment = attachments[0]
+
+        # Ensure medical fields are explicitly set on instance before save
+        try:
+            if self.cleaned_data.get("medical_expenses") is not None:
+                self.instance.medical_expenses = self.cleaned_data.get("medical_expenses")
+            if self.cleaned_data.get("amount") is not None:
+                self.instance.amount = self.cleaned_data.get("amount")
+            if self.cleaned_data.get("claim_for") is not None:
+                self.instance.claim_for = self.cleaned_data.get("claim_for")
+            if self.cleaned_data.get("dependent_name") is not None:
+                self.instance.dependent_name = self.cleaned_data.get("dependent_name")
+        except Exception:
+            pass
 
         instance = super().save(commit=commit)
 
+
+        # Apply removal after instance is saved/available
+        try:
+            # Only remove primary post-save if user asked to remove and didn't upload a replacement
+            if remove_primary and not attachments and instance.attachment:
+                instance.attachment.delete(save=False)
+                instance.attachment = None
+                if commit:
+                    instance.save(update_fields=["attachment"])
+            if remove_ids:
+                qs = ReimbursementMultipleAttachment.objects.filter(id__in=remove_ids)
+                for obj in qs:
+                    instance.other_attachments.remove(obj)
+                    obj.attachment.delete(save=False)
+                    obj.delete()
+        except Exception:
+            pass
+
+
+        # Persist medical changes even when approved (model.save may skip on approved+allowance)
+        try:
+            if (
+                instance.type == "medical_encashment"
+                and instance.status == "approved"
+                and getattr(instance, "allowance_id_id", None)
+            ):
+                update_fields = {}
+                for field in [
+                    "medical_expenses",
+                    "amount",
+                    "claim_for",
+                    "dependent_name",
+                    "title",
+                    "description",
+                ]:
+                    if field in self.fields:
+                        update_fields[field] = getattr(self.instance, field, None)
+                if update_fields:
+                    Reimbursement.objects.filter(id=instance.id).update(**update_fields)
+        except Exception:
+            # avoid blocking save on update fallback
+            pass
+
         if attachments:
-            attachment_objs = [
-                ReimbursementMultipleAttachment(attachment=file) for file in attachments
-            ]
-            created_attachments = ReimbursementMultipleAttachment.objects.bulk_create(
-                attachment_objs
-            )
-            multiple_attachment_ids = [obj.pk for obj in created_attachments]
-            instance.other_attachments.add(*multiple_attachment_ids)
+            # Store any additional files as separate attachments
+            # On create, we just set the primary from attachments[0]; do not duplicate it.
+            # On edit with an existing primary and the user keeps it (not removing), all uploaded files are additional.
+            if (not is_new) and getattr(self.instance, "attachment", None) and not remove_primary:
+                # Existing primary kept; treat all newly uploaded as additional
+                additional_files = attachments
+            else:
+                # New record or replacing primary; exclude the first which became the primary
+                additional_files = attachments[1:]
+            if additional_files:
+                attachment_objs = [
+                    ReimbursementMultipleAttachment(attachment=file)
+                    for file in additional_files
+                ]
+                created_attachments = ReimbursementMultipleAttachment.objects.bulk_create(
+                    attachment_objs
+                )
+                multiple_attachment_ids = [obj.pk for obj in created_attachments]
+                instance.other_attachments.add(*multiple_attachment_ids)
 
         if is_new:
+            if instance.type == "medical_encashment":
+                department = instance.employee_id.employee_work_info.department_id
+                company = instance.employee_id.employee_work_info.company_id
+                condition = MultipleApprovalCondition.objects.filter(
+                    condition_type="medical_reimbursement",
+                    department=department,
+                    company_id=company,
+                ).first()
+                if condition:
+                    ReimbursementConditionApproval.objects.filter(
+                        reimbursement_id=instance
+                    ).delete()
+                    sequence = 0
+                    for manager in condition.approval_managers():
+                        if not isinstance(manager, Employee):
+                            manager = getattr(
+                                instance.employee_id.employee_work_info, manager
+                            )
+                        if manager:
+                            sequence += 1
+                            ReimbursementConditionApproval.objects.create(
+                                sequence=sequence,
+                                reimbursement_id=instance,
+                                manager_id=manager,
+                            )
             try:
                 manager = instance.employee_id.employee_work_info.reporting_manager_id
                 if manager and manager.employee_user_id:
                     notify.send(
-                        instance.employee_id,  # 816
+                        instance.employee_id,
                         recipient=manager.employee_user_id,
                         verb=f"You have a new reimbursement request to approve for {instance.employee_id}.",
                         verb_ar=f"لديك طلب استرداد نفقات جديد يتعين عليك الموافقة عليه لـ {instance.employee_id}.",
@@ -1071,6 +1365,7 @@ class ReimbursementForm(ModelForm):
                         redirect=f"/payroll/view-reimbursement?id={instance.id}",
                     )
             except Exception:
+                amount_val = -1
                 pass
 
         return instance, attachments
@@ -1103,3 +1398,8 @@ class PayslipAutoGenerateForm(ModelForm):
         context = {"form": self}
         table_html = render_to_string("common_form.html", context)
         return table_html
+
+
+
+
+

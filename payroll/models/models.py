@@ -1592,6 +1592,16 @@ class Reimbursement(HorillaModel):
         ("requested", _("Requested")),
         ("approved", _("Approved")),
         ("rejected", _("Rejected")),
+        ("closed", _("Closed")),
+    ]
+    # Medical claim specific fields
+    CLAIM_FOR_CHOICES = [
+        ("self", _("Self")),
+        ("mother", _("Mother")),
+        ("father", _("Father")),
+        ("son", _("Son")),
+        ("daughter", _("Daughter")),
+        ("wife", _("Wife")),
     ]
     title = models.CharField(max_length=50)
     type = models.CharField(
@@ -1605,6 +1615,14 @@ class Reimbursement(HorillaModel):
     other_attachments = models.ManyToManyField(
         ReimbursementMultipleAttachment, blank=True, editable=False
     )
+    # These fields are optional for non-medical types
+    claim_for = models.CharField(
+        max_length=20, choices=CLAIM_FOR_CHOICES, null=True, blank=True
+    )
+    dependent_name = models.CharField(max_length=100, null=True, blank=True)
+    # Store list of expense items for medical claim (see form validation)
+    medical_expenses = models.JSONField(null=True, blank=True)
+    total_claimed_amount = models.FloatField(null=True, blank=True, default=0)
     if apps.is_installed("leave"):
         leave_type_id = models.ForeignKey(
             "leave.LeaveType",
@@ -1632,6 +1650,18 @@ class Reimbursement(HorillaModel):
     status = models.CharField(
         max_length=10, choices=status_types, default="requested", editable=False
     )
+    rejected_by_department = models.CharField(
+        max_length=255,
+        null=True,
+        blank=True,
+        verbose_name=_("Rejected By Department"),
+    )
+    reject_reason = models.CharField(
+        max_length=250,
+        null=True,
+        blank=True,
+        verbose_name=_("Rejection Reason"),
+    )
     approved_by = models.ForeignKey(
         Employee,
         on_delete=models.SET_NULL,
@@ -1640,6 +1670,8 @@ class Reimbursement(HorillaModel):
         editable=False,
     )
     description = models.TextField(null=True, max_length=255)
+    # Optional remarks provided by Finance at approval time (e.g., when approving partial payments)
+    finance_comment = models.TextField(null=True, blank=True, max_length=500)
     allowance_id = models.ForeignKey(
         Allowance, on_delete=models.SET_NULL, null=True, editable=False
     )
@@ -1669,6 +1701,20 @@ class Reimbursement(HorillaModel):
             raise ValidationError({"attachment": "This field is required"})
         if self.type == "medical_encashment" and self.attachment is None:
             raise ValidationError({"attachment": "This field is required"})
+        # Ensure total_claimed_amount is computed from medical_expenses for medical claims,
+        # but do NOT override approved amount once beyond requested stage.
+        if self.type == "medical_encashment":
+            # Prefer explicitly set total_claimed_amount; if missing try computing from expenses
+            if (self.total_claimed_amount is None or self.total_claimed_amount == 0) and self.medical_expenses:
+                try:
+                    self.total_claimed_amount = sum(
+                        float(item.get("expense_amount", 0) or 0) for item in self.medical_expenses
+                    )
+                except Exception:
+                    pass
+            # During requested stage, mirror amount to claimed total for visibility only
+            if self.status == "requested" and self.total_claimed_amount:
+                self.amount = self.total_claimed_amount
         if self.type == "leave_encashment" and self.leave_type_id is None:
             raise ValidationError({"leave_type_id": "This field is required"})
         if self.type == "leave_encashment":
@@ -1787,23 +1833,72 @@ class Reimbursement(HorillaModel):
     def delete(self, *args, **kwargs):
         request = getattr(horilla_middlewares._thread_locals, "request", None)
         if self.status == "approved":
-            message = messages.info(
+            return messages.info(
                 request,
                 _(
                     f"{self.title} is in approved state,\
                     it cannot be deleted"
                 ),
             )
-        else:
-            if self.allowance_id:
-                self.allowance_id.delete()
-                super().delete(*args, **kwargs)
-                message = messages.success(request, "Reimbursement deleted")
 
-        return message
+        if self.allowance_id:
+            self.allowance_id.delete()
+        super().delete(*args, **kwargs)
+        return messages.success(request, "Reimbursement deleted")
 
     def __str__(self):
         return f"{self.title}"
+
+    def is_locked(self):
+        """Medical claim becomes read-only after any approval by managers or when approved/closed."""
+        try:
+            if self.type != "medical_encashment":
+                return False
+            if self.status in ("approved", "closed"):
+                return True
+            return self.reimbursementconditionapproval_set.filter(is_approved=True).exists()
+        except Exception:
+            return False
+
+    def approval_progress(self):
+        approvals = self.reimbursementconditionapproval_set.all()
+        return approvals.filter(is_approved=True).count(), approvals.count()
+
+    def can_be_approved_by(self, employee):
+        approvals = self.reimbursementconditionapproval_set.order_by("sequence")
+        pending = approvals.filter(is_approved=False, is_rejected=False).first()
+        return pending and pending.manager_id == employee
+
+    def last_approved_department(self):
+        """Return department name of the latest approval (by sequence)."""
+        try:
+            approval = (
+                self.reimbursementconditionapproval_set.filter(is_approved=True)
+                .order_by("-sequence")
+                .first()
+            )
+            if not approval:
+                return None
+            dept = approval.manager_id.get_department()
+            return getattr(dept, "department", None) if dept else None
+        except Exception:
+            return None
+
+
+class ReimbursementConditionApproval(models.Model):
+    sequence = models.IntegerField()
+    is_approved = models.BooleanField(default=False)
+    is_rejected = models.BooleanField(default=False)
+    reject_reason = models.CharField(
+        max_length=250,
+        null=True,
+        blank=True,
+        verbose_name=_("Rejection Reason"),
+    )
+    reimbursement_id = models.ForeignKey(
+        Reimbursement, on_delete=models.CASCADE
+    )
+    manager_id = models.ForeignKey(Employee, on_delete=models.CASCADE)
 
 
 class ReimbursementFile(models.Model):

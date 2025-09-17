@@ -91,6 +91,14 @@
                     </span>
                 </div>
             </div>
+            <div class="oh-timeoff-modal__stats-container mb-3">
+                <div class="oh-timeoff-modal__stat">
+                    <span class="oh-timeoff-modal__stat-title">{% trans "Applied On" %}</span>
+                    <span class="oh-timeoff-modal__stat-count">
+                    {{ work_type_request.created_at|date:"d-M-Y h:i A" }}
+                    </span>
+                </div>
+            </div>
             {% with can_change=perms.base.change_worktyperequest can_delete=perms.base.delete_worktyperequest %}
                 {% if can_change or request.user|is_reportingmanager or can_delete %}
                     <div class="oh-modal__button-container text-center">

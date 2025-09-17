@@ -1,4 +1,15 @@
 {% load i18n %}
+
+
+<style>
+  #objectDetailsModalTarget .oh-modal__dialog-body {
+    width: 900px !important;
+    max-width: 95% !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+  }
+</style>
+
 <div class="oh-modal__dialog-header">
     <span
       class="oh-modal__dialog-title"
@@ -14,19 +25,27 @@
     {% if request.GET.instances_ids %}
     <div class="oh-modal__dialog oh-modal__dialog--navigation m-0 p-0">
         <button
-            hx-get="{% url 'reimbursement-individual-view' previous %}?instances_ids={{instances_ids}}"
-            hx-target="#objectDetailsModalTarget" data-action="previous"
+            {% if previous %}
+                hx-get="{% url 'reimbursement-individual-view' previous %}?instances_ids={{instances_ids}}"
+                hx-target="#objectDetailsModalTarget"
+            {% else %}
+                disabled
+            {% endif %}
+            data-action="previous"
             class="oh-modal__diaglog-nav oh-modal__nav-prev">
-            <ion-icon name="chevron-back-outline" class="md hydrated" role="img"
-            aria-label="chevron back outline"></ion-icon>
+            <ion-icon name="chevron-back-outline" class="md hydrated" role="img" aria-label="chevron back outline"></ion-icon>
         </button>
 
         <button
-            hx-get="{% url 'reimbursement-individual-view' next %}?instances_ids={{instances_ids}}"
-            hx-target="#objectDetailsModalTarget" data-action="next"
+            {% if next %}
+                hx-get="{% url 'reimbursement-individual-view' next %}?instances_ids={{instances_ids}}"
+                hx-target="#objectDetailsModalTarget"
+            {% else %}
+                disabled
+            {% endif %}
+            data-action="next"
             class="oh-modal__diaglog-nav oh-modal__nav-next">
-            <ion-icon name="chevron-forward-outline" class="md hydrated" role="img"
-            aria-label="chevron forward outline"></ion-icon>
+            <ion-icon name="chevron-forward-outline" class="md hydrated" role="img" aria-label="chevron forward outline"></ion-icon>
         </button>
     </div>
     {% endif %}
@@ -65,9 +84,27 @@
             </div>
             <div class="oh-timeoff-modal__stat" style="margin-left: 20px;">
                 <span class="oh-timeoff-modal__stat-title">{% trans "Status" %}</span>
-                <span class="oh-timeoff-modal__stat-count">{{reimbursement.get_status_display}}</span>
+                <span class="oh-timeoff-modal__stat-count">
+                    {% with progress=reimbursement.approval_progress %}
+                        {% if reimbursement.status == 'closed' %}
+                            <span class="badge bg-primary">{% trans "Closed" %}</span>
+                        {% elif reimbursement.status == 'approved' %}
+                            <span class="badge bg-success">{% trans "Approved" %} {% if progress.1 %}( {{ progress.0 }}/{{ progress.1 }} Approved by {{ reimbursement.last_approved_department }} ){% endif %}</span>
+
+                        {% elif reimbursement.status == 'rejected' %}
+                            <span class="badge bg-danger">{% trans "Rejected" %} {% if reimbursement.rejected_by_department %}(by {{ reimbursement.rejected_by_department }}){% endif %}</span>
+                        {% elif reimbursement.status == 'requested' %}
+                        
+                            <span class="badge bg-warning text-dark">{% trans "Requested" %}</span>
+                        {% else %}
+                            <span class="badge bg-secondary">{{ reimbursement.get_status_display }}</span>
+                        {% endif %}
+                    {% endwith %}
+                </span>
             </div>
         </div>
+       
+
         {% if reimbursement.type == 'reimbursement' %}
             <!-- start of reimbursement details -->
             <div class="oh-timeoff-modal__stats-container mb-3">
@@ -84,18 +121,20 @@
                 <div class="oh-timeoff-modal__stat" style="margin-left: 20px;">
                     <span class="oh-timeoff-modal__stat-title">{% trans "Attachments" %}</span>
                     <span class="oh-timeoff-modal__stat-count">
-                        {% for doc in reimbursement.other_attachments.all %}
-                        <a
-                            href="{{doc.attachment.url}}"
-                            rel="noopener noreferrer"
-                            target="_blank"
-                            ><span
-                                class="oh-file-icon oh-file-icon--pdf"
-                                onmouseover="enlargeattachment('{{doc.attachment.url}}')"
-                                style="width:40px;height:40px"
-                            ></span
-                        ></a>
-                    {% endfor %}
+                        {% for att in attachments_combined %}
+                            <a
+                                href="{{ att.url }}"
+                                rel="noopener noreferrer"
+                                target="_blank"
+                                ><span
+                                    class="oh-file-icon oh-file-icon--pdf"
+                                    onmouseover="enlargeattachment('{{ att.url }}')"
+                                    style="width:40px;height:40px"
+                                ></span
+                            ></a>
+                        {% empty %}
+                            <span class="oh-text--muted">{% trans "No attachments uploaded" %}</span>
+                        {% endfor %}
                     </span>
                 </div>
             </div>
@@ -129,7 +168,117 @@
                     <span class="oh-timeoff-modal__stat-count">{{reimbursement.description}}</span>
                 </div>
             </div>
+            
             <!-- end of leave encashment details -->
+        {% elif reimbursement.type == 'medical_encashment' %}
+        <style>
+    /* Override modal width specifically for medical reimbursement */
+    .oh-modal__dialog {
+        max-width: 1200px !important;
+        width: 90% !important;
+    }
+</style>
+            <!-- start of medical reimbursement details (read-only) -->
+            <div class="oh-timeoff-modal__stats-container mb-3">
+                <div class="oh-timeoff-modal__stat">
+                    <span class="oh-timeoff-modal__stat-title">{% trans "Date" %}</span>
+                    <span class="oh-timeoff-modal__stat-count dateformat_changer">{{reimbursement.created_at|date:"F j, Y"}}</span>
+                </div>
+                <div class="oh-timeoff-modal__stat" style="margin-left: 20px;">
+                    <span class="oh-timeoff-modal__stat-title">{% trans "Claim For" %}</span>
+                    <span class="oh-timeoff-modal__stat-count">{{ reimbursement.claim_for|default:"-" }}</span>
+                                    {% if reimbursement.dependent_name %}
+                <div class="oh-timeoff-modal__stat" style=" mt-4 margin-left: 20px;">
+                    <span class="oh-timeoff-modal__stat-title">{% trans "Dependent Name" %}</span>
+                    <span class="oh-timeoff-modal__stat-count">{{ reimbursement.dependent_name }}</span>
+                </div>
+                {% endif %}
+                </div>
+
+
+
+            </div>
+            <div class="oh-timeoff-modal__stats-container mb-3">
+                <div class="oh-timeoff-modal__stat">
+                    <span class="oh-timeoff-modal__stat-title">{% trans "Description" %}</span>
+                    <span class="oh-timeoff-modal__stat-count">{{reimbursement.description}}</span>
+                </div>
+            </div>
+             {% if reimbursement.type == 'medical_encashment' %}
+        <div class="oh-timeoff-modal__stats-container mb-4">
+
+            {% if reimbursement.finance_comment %}
+            <div class="oh-timeoff-modal__stat" >
+                <span class="oh-timeoff-modal__stat-title">{% trans "Partial Amount Reason" %}</span>
+                <span class="oh-timeoff-modal__stat-count">{{ reimbursement.finance_comment }}</span>
+            </div>
+            {% endif %}
+        </div>
+        {% endif %}
+            <div class="oh-timeoff-modal__stats-container mb-3">
+                <div class="oh-timeoff-modal__stat" style="width: 100%;">
+                    <span class="oh-timeoff-modal__stat-title d-block mb-2">{% trans "Expense Items" %}</span>
+                    <div class="oh-sticky-table">
+                        <div class="oh-sticky-table__table">
+                            <div class="oh-sticky-table__thead">
+                                <div class="oh-sticky-table__tr">
+                                    <div class="oh-sticky-table__th">{% trans "Date" %}</div>
+                                    <div class="oh-sticky-table__th">{% trans "Type" %}</div>
+                                    <div class="oh-sticky-table__th">{% trans "Provider" %}</div>
+                                    <div class="oh-sticky-table__th">{% trans "Amount" %}</div>
+                                    <div class="oh-sticky-table__th">{% trans "Receipt No/Date" %}</div>
+                                </div>
+                            </div>
+                            
+                            <div class="oh-sticky-table__tbody">
+                                {% if reimbursement.medical_expenses %}
+                                    {% for it in reimbursement.medical_expenses %}
+                                    <div class="oh-sticky-table__tr">
+                                        <div class="oh-sticky-table__td">{{ it.expense_date }}</div>
+                                        <div class="oh-sticky-table__td">{{ it.expense_type }}</div>
+                                        <div class="oh-sticky-table__td">{{ it.provider }}</div>
+                                        <div class="oh-sticky-table__td">{{ it.expense_amount }}</div>
+                                        <div class="oh-sticky-table__td">{{ it.receipt_no_date }}</div>
+                                    </div>
+                                    {% endfor %}
+                                {% else %}
+                                    <div class="oh-sticky-table__tr"><div class="oh-sticky-table__td" colspan="5">{% trans "No itemized expenses provided" %}</div></div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+
+            <div class="oh-timeoff-modal__stats-container mb-3">
+                <div class="oh-timeoff-modal__stat" style="width: 100%;">
+                    <span class="oh-timeoff-modal__stat-title d-block mb-2">{% trans "Attachments" %}</span>
+                    <div>
+                        {% for att in attachments_combined %}
+                            <div class="mb-1">
+                                <a href="{{ att.url }}" target="_blank" rel="noopener">{{ att.name }}</a>
+                            </div>
+                        {% empty %}
+                            {% comment %} <div class="oh-text--muted">{% trans "No attachments uploaded" %}</div> {% endcomment %}
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+            {% comment %} <div class="oh-timeoff-modal__stats-container mb-3">
+                <div class="oh-timeoff-modal__stat">
+                    <span class="oh-timeoff-modal__stat-title">{% trans "Attachments" %}</span>
+                    <span class="oh-timeoff-modal__stat-count">
+                        {% if reimbursement.attachment %}
+                            <div><a href="{{ reimbursement.attachment.url }}" download>{{ reimbursement.attachment.name|cut:'payroll/reimbursements/' }}</a></div>
+                        {% endif %}
+                        {% for doc in reimbursement.other_attachments.all %}
+                            <div><a href="{{ doc.attachment.url }}" download>{{ doc.attachment.name|cut:'payroll/reimbursements/' }}</a></div>
+                        {% endfor %}
+                    </span>
+                </div>
+            </div> {% endcomment %}
+            <!-- end of medical reimbursement details -->
         {% else %}
             <!-- start of bonous encashment details -->
             <div class="oh-timeoff-modal__stats-container mb-3">
@@ -153,30 +302,57 @@
         <!-- start of edit delete buttons -->
         <div class="oh-modal__button-container text-center">
             <div class="oh-btn-group">
+                {% with user_dept=request.user.employee_get.employee_work_info.department_id %}
+                {% if user_dept and user_dept.department == 'Accounts & Finance' and reimbursement.type == 'medical_encashment' %}
+                    {% if reimbursement.status == 'approved' and reimbursement.last_approved_department == 'Accounts & Finance' %}
+                        <a
+                            href="{% url 'approve-reimbursements' %}?ids={{reimbursement.id}}&status=closed"
+                            onclick="return confirm('Confirm payment completion?')"
+                            class="oh-btn oh-btn--info w-25"
+                            title="{% trans 'Payment Completion' %}"
+                        >
+                            <ion-icon name="checkmark-done-circle-outline"></ion-icon>
+                        </a>
+                        <a
+                            href="{% url 'reimbursement-print' reimbursement.id %}"
+                            class="oh-btn oh-btn--warning w-25"
+                            title="{% trans 'Print' %}"
+                            onclick="event.stopPropagation();"
+                            target="_blank"
+                        >
+                            <ion-icon name="print-outline"></ion-icon>
+                        </a>
+                    {% endif %}
+                {% endif %}
+                {% endwith %}
                 <!-- start of edit button  -->
                 {% if perms.payroll.change_reimbursement or request.user %}
+                {% if request.user.is_authenticated and request.user.employee_get == req.employee_id  and reimbursement.status == 'requested' %}
                 <a
                     onclick="event.stopPropagation()"
                     hx-get="{% url 'create-reimbursement' %}?instance_id={{ reimbursement.id }}"
                     hx-target="#objectCreateModalTarget"
                     data-toggle="oh-modal-toggle"
                     data-target="#objectCreateModal"
-                    class="oh-btn oh-btn--info w-50"
+                    class="oh-btn oh-btn--primary w-25"
                     title="{% trans 'Edit' %}"
                 >
                 <ion-icon name="create-outline"></ion-icon>
                 </a>
                     {% comment %} <a hx-get="{% url 'shift-request-update' shift_request.id %}" hx-target='#shiftRequestModalUpdateBody' data-toggle="oh-modal-toggle" data-target='#shiftRequestModalUpdate' class="oh-btn oh-btn--info w-50" title="{% trans 'Edit' %}"><ion-icon name="create-outline"></ion-icon></a> {% endcomment %}
 
+                    {% endif %}
                 {% endif %}
                 <!-- end of edit button  -->
                 <!-- start of remove button  -->
                 {% if perms.payroll.delete_reimbursement %}
+                    {% if request.user.is_authenticated and request.user.employee_get == req.employee_id  and reimbursement.status == 'requested' %}
                     <a href="{% url "delete-reimbursement" %}?ids={{reimbursement.id}}" onclick="return confirm('Do you want to delete this record?')"
-                    class="oh-btn oh-btn--secondary w-50"  title='{% trans "Delete" %}'>
+                    class="oh-btn oh-btn--secondary w-25"  title='{% trans "Delete" %}'>
 
                         <ion-icon name="trash-outline"></ion-icon>
                     </a>
+                {% endif %}
                 {% endif %}
                 <!-- end of remove button  -->
             </div>
@@ -187,5 +363,20 @@
 
 </div>
 <script>
+
+function reimbursementPrint(url){
+    try{
+        var w = window.open(url, '_blank', 'noopener');
+        if(!w){ alert('Pop-up blocked'); return false; }
+        var t = setInterval(function(){
+            try{
+                if(w.document && w.document.readyState==='complete'){
+                    clearInterval(t); w.focus(); w.print();
+                }
+            }catch(e){}
+        }, 300);
+        return false;
+    }catch(e){ return true; }
+}
 
 </script>

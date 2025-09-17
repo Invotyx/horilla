@@ -144,6 +144,7 @@ class TimeSheetList(HorillaListView):
             else:
                 queryset = queryset.filter(employee_id=employee).distinct()
 
+
         # Apply default filter for the current month only when
         # no explicit date filters are provided via query params.
         params = self.request.GET or {}
@@ -159,6 +160,7 @@ class TimeSheetList(HorillaListView):
                 calendar.monthrange(today.year, today.month)[1],
             )
             queryset = queryset.filter(date__gte=first_day, date__lte=last_day)
+
 
         return queryset.order_by("-date")
 

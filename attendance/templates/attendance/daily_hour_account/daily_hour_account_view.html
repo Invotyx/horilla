@@ -1,0 +1,12 @@
+{% extends 'index.html' %}
+{% load i18n %}
+{% block content %}
+<div class="oh-wrapper">
+    <div id="dailyHourAccountTable"
+         hx-get="{% url 'daily-hour-account-grid' %}?month={{ initial_month }}"
+         hx-trigger="load"
+         hx-target="this">
+        <div class="animated-background"></div>
+    </div>
+</div>
+{% endblock %}

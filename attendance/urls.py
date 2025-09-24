@@ -438,6 +438,9 @@ urlpatterns = [
         views.delete_comment_file,
         name="delete-comment-file",
     ),
+    path("daily-hour-account/", views.daily_hour_account, name="daily-hour-account"),
+    path("daily-hour-account/grid", views.daily_hour_account_grid, name="daily-hour-account-grid"),
+    path("daily-hour-account/export/", views.daily_hour_account_export, name="daily-hour-account-export"),
     path("work-records/", views.work_records, name="work-records"),
     path("work-record-export/", views.work_record_export, name="work-record-export"),
     path(

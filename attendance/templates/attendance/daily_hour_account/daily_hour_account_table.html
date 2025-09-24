@@ -1,0 +1,324 @@
+<div id="dailyHourAccountTable">
+{% load i18n %}
+<style>
+    .dha-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        flex-wrap: wrap;
+        gap: 1rem;
+        margin-bottom: 1rem;
+        padding: 1.25rem;
+        border-radius: 12px;
+        background: linear-gradient(135deg, #ffffff 0%, #f6f8fd 100%);
+        box-shadow: 0 8px 20px rgba(38, 53, 88, 0.12);
+    }
+    .dha-title {
+        margin: 0;
+        font-size: 1.5rem;
+        font-weight: 600;
+    }
+    .dha-subtitle {
+        margin: 0.25rem 0 0;
+        color: #55607a;
+        font-size: 0.95rem;
+    }
+    .dha-controls {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+    }
+    .dha-controls .oh-btn {
+        min-height: 40px;
+    }
+    .dha-controls .oh-btn--light-bkg {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.25rem;
+        border: 1px solid #d8deed;
+        color: #55607a;
+        transition: all 0.2s ease;
+    }
+    .dha-controls .oh-btn--light-bkg:hover {
+        background: #335eea;
+        color: #fff;
+        border-color: #335eea;
+        box-shadow: 0 8px 16px rgba(51, 94, 234, 0.25);
+    }
+    .dha-controls .oh-btn--secondary {
+        box-shadow: 0 6px 18px rgba(51, 94, 234, 0.2);
+    }
+    .dha-month-picker {
+        min-width: 160px;
+        padding: 0.55rem 0.75rem;
+        border-radius: 10px;
+        border: 1px solid #d8deed;
+        box-shadow: 0 4px 12px rgba(40, 62, 102, 0.08);
+    }
+    .dha-month-picker {
+        min-width: 140px;
+    }
+    .dha-legend {
+        border-radius: 12px;
+        background: #ffffff;
+        box-shadow: 0 10px 24px rgba(38, 53, 88, 0.08);
+        border: 1px solid #edf1fb;
+    }
+    .dha-legend-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+        gap: 0.75rem;
+    }
+    .dha-legend-item {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-size: 0.9rem;
+        color: #2d3440;
+        font-weight: 500;
+    }
+    .dha-legend-dot {
+        width: 16px;
+        height: 16px;
+        border-radius: 4px;
+        display: inline-block;
+        border: 1px solid rgba(0, 0, 0, 0.05);
+    }
+    .dha-table-wrapper {
+        overflow-x: auto;
+    }
+    .dha-table {
+        width: 100%;
+        border-collapse: separate;
+        border-spacing: 0;
+        min-width: 760px;
+        box-shadow: 0 12px 28px rgba(50, 63, 100, 0.08);
+        border-radius: 16px;
+        overflow: hidden;
+    }
+    .dha-table th,
+    .dha-table td {
+        border: 1px solid #e2e8f5;
+        padding: 10px;
+        text-align: center;
+        background: #fff;
+    }
+    .dha-table tbody tr:hover td {
+        box-shadow: inset 0 0 0 9999px rgba(51, 94, 234, 0.06);
+    }
+    .dha-table thead th {
+        background: #eef1f6;
+        font-weight: 600;
+        font-size: 0.9rem;
+        position: sticky;
+        top: 0;
+        z-index: 3;
+    }
+    .dha-sticky-col {
+        position: sticky;
+        left: 0;
+        z-index: 4;
+        text-align: left;
+        min-width: 240px;
+        background: #fff;
+        box-shadow: 6px 0 12px rgba(37, 47, 79, 0.08);
+    }
+    .dha-sticky-col .dha-employee-name {
+        font-weight: 600;
+        font-size: 0.95rem;
+    }
+    .dha-sticky-col .dha-employee-badge {
+        font-size: 0.8rem;
+        color: #6c7480;
+        margin-top: 2px;
+    }
+    .dha-company {
+        display: block;
+        font-size: 0.75rem;
+        color: #6c7480;
+        margin-top: 2px;
+    }
+    .dha-cell {
+        min-width: 110px;
+        vertical-align: top;
+    }
+    .dha-hours {
+        font-weight: 600;
+        font-size: 0.92rem;
+    }
+    .dha-times {
+        margin-top: 4px;
+        font-size: 0.78rem;
+        color: #5b657e;
+        font-weight: 500;
+    }
+    .dha-cell--full {
+        background-color: #d4f7ce !important;
+    }
+    .dha-cell--partial {
+        background-color: #fff4c7 !important;
+    }
+    .dha-cell--missing {
+        background-color: #ffd8d8 !important;
+    }
+    .dha-cell--overtime {
+        background-color: #d5e4ff !important;
+    }
+    .dha-cell--leave {
+        background-color: #e7ddff !important;
+    }
+    .dha-cell--non-working {
+        background-color: #f0f2f6 !important;
+    }
+    .dha-cell.dha-total-cell,
+    .dha-table tfoot th {
+        background: #f5f7fb;
+        font-weight: 600;
+    }
+    .dha-table tfoot th {
+        position: sticky;
+        bottom: 0;
+        z-index: 2;
+    }
+    .dha-table tfoot th.dha-sticky-col {
+        z-index: 5;
+    }
+    .dha-table tfoot th,
+    .dha-table tfoot td {
+        padding-top: 12px;
+        padding-bottom: 12px;
+    }
+    .dha-empty {
+        text-align: center;
+        padding: 2rem 1rem;
+        color: #6c7480;
+        font-size: 0.95rem;
+    }
+</style>
+<div class='dha-header oh-card mb-3'>
+    <div>
+        <h2 class='dha-title'>{% trans "Hour Account" %}</h2>
+        <p class='dha-subtitle'>{{ month_label }}</p>
+    </div>
+    <div class='dha-controls'>
+        <button type='button'
+                class='oh-btn oh-btn--light-bkg'
+                hx-get="{% url "daily-hour-account-grid" %}?month={{ prev_month_value }}"
+                hx-target='#dailyHourAccountTable'
+                hx-swap='outerHTML'
+                aria-label='{% trans "Previous month" %}'>
+            &lsaquo;
+        </button>
+        <input type='month'
+               name='month'
+               value='{{ selected_month_value }}'
+               class='oh-input dha-month-picker'
+               hx-get='{% url "daily-hour-account-grid" %}'
+               hx-target='#dailyHourAccountTable'
+               hx-trigger='change'
+               hx-swap='outerHTML'/>
+        <button type='button'
+                class='oh-btn oh-btn--light-bkg'
+                hx-get="{% url "daily-hour-account-grid" %}?month={{ next_month_value }}"
+                hx-target='#dailyHourAccountTable'
+                hx-swap='outerHTML'
+                aria-label='{% trans "Next month" %}'>
+            &rsaquo;
+        </button>
+        <a class='oh-btn oh-btn--secondary'
+           href='{% url "daily-hour-account-export" %}?month={{ selected_month_value }}'
+           target='_blank'>
+            {% trans "Export" %}
+        </a>
+    </div>
+</div>
+<div class='oh-card dha-legend mb-3'>
+    <div class='dha-legend-grid'>
+        <div class='dha-legend-item'><span class='dha-legend-dot dha-cell--full'></span> {% trans "Fully logged" %}</div>
+        <div class='dha-legend-item'><span class='dha-legend-dot dha-cell--partial'></span> {% trans "Partial logged" %}</div>
+        <div class='dha-legend-item'><span class='dha-legend-dot dha-cell--missing'></span> {% trans "Missing / zero hours" %}</div>
+        <div class='dha-legend-item'><span class='dha-legend-dot dha-cell--overtime'></span> {% trans "Overtime" %}</div>
+        <div class='dha-legend-item'><span class='dha-legend-dot dha-cell--leave'></span> {% trans "Leave / holiday" %}</div>
+        <div class='dha-legend-item'><span class='dha-legend-dot dha-cell--non-working'></span> {% trans "Non-working day" %}</div>
+        <div class='dha-legend-item'><span>&#x23F1;</span> {% trans "Logged / Expected Hours" %}</div>
+    </div>
+</div>
+<div class='oh-sticky-table dha-table-wrapper'>
+    <table class='dha-table'>
+        <thead>
+            <tr>
+                <th class='dha-sticky-col'>
+                    {% trans "Employee" %}
+                    {% if company %}<span class='dha-company'>({{ company }})</span>{% endif %}
+                </th>
+                {% for day in month_dates %}
+                    <th>{{ day.day }}</th>
+                {% endfor %}
+                <th>{% trans "Monthly Total" %}</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for entry in employees_data %}
+                <tr>
+                    <td class='dha-sticky-col'>
+                        <div class='dha-employee-name'>{{ entry.instance }}</div>
+                        {% comment %} {% if entry.instance.badge_id %}
+                            <div class='dha-employee-badge'>{{ entry.instance.badge_id }}</div>
+                        {% endif %} {% endcomment %}
+                    </td>
+                    {% for cell in entry.cells %}
+                        <td class='dha-cell {{ cell.css_class }}' {% if cell.note %}title='{{ cell.note }}'{% endif %}>
+                        <div class="dha-hours">
+                                <div class="d-flex justify-content-between border-bottom pb-1 mb-1">
+                                    {% comment %} <span>Logged</span> {% endcomment %}
+                                    <span>{{ cell.logged }}</span>
+                                </div>
+                                <div class="d-flex justify-content-between pb-1">
+                                    {% comment %} <span>Expected</span> {% endcomment %}
+                                    <span>{{ cell.expected }}</span>
+                                </div>
+                            </div>
+
+                            {% comment %} <div class='dha-times'>{{ cell.check_in }} &ndash; {{ cell.check_out }}</div> {% endcomment %}
+                        </td>
+                    {% endfor %}
+                    <td class='dha-cell dha-total-cell'>
+                        <div class='dha-hours'>{{ entry.total_logged }} / {{ entry.total_expected }}</div>
+                    </td>
+                </tr>
+            {% empty %}
+                <tr>
+                    <td class='dha-empty' colspan='{{ month_dates|length|add:"2" }}'>
+                        {% trans "No employees available for the selected month." %}
+                    </td>
+                </tr>
+            {% endfor %}
+        </tbody>
+        {% comment %} <tfoot>
+            <tr>
+                <th class='dha-sticky-col'>{% trans "Totals" %}</th>
+                {% for total in day_totals %}
+                    <th class='dha-cell dha-total-cell'>
+                        <div class='dha-hours'>{{ total.logged }}  {{ total.expected }}</div>
+                    </th>
+                {% endfor %}
+                 <th class='dha-cell dha-total-cell'>
+                    <div class='dha-hours'>{{ overall.logged }} / {{ overall.expected }}</div>
+                </th>
+            </tr>
+        </tfoot> {% endcomment %}
+    </table>
+</div>
+
+</div>
+
+
+
+
+
+

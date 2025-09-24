@@ -111,6 +111,8 @@ from base.methods import (
     filtersubordinatesemployeemodel,
     get_key_instances,
     get_pagination,
+    is_company_leave,
+    is_holiday,
 )
 from base.models import (
     AttendanceAllowedIP,
@@ -120,6 +122,8 @@ from base.models import (
 )
 from employee.filters import EmployeeFilter
 from employee.models import Employee, EmployeeWorkInformation
+from leave.models import LeaveRequest
+from project.models import TimeSheet
 from horilla.decorators import (
     hx_request_required,
     install_required,
@@ -2280,6 +2284,411 @@ def delete_comment_file(request):
     AttendanceRequestFile.objects.filter(id__in=ids).delete()
     messages.success(request, _("File deleted successfully"))
     return HttpResponse(script)
+
+
+
+DAILY_HOUR_ACCOUNT_TOLERANCE_SECONDS = 20 * 60
+
+DAILY_HOUR_ACCOUNT_STATUS_CLASSES = {
+    "full": "dha-cell--full",
+    "partial": "dha-cell--partial",
+    "missing": "dha-cell--missing",
+    "overtime": "dha-cell--overtime",
+    "leave": "dha-cell--leave",
+    "non_working": "dha-cell--non-working",
+}
+
+
+def _get_hour_account_employees(request):
+    employee = getattr(request.user, "employee_get", None)
+    company = getattr(getattr(employee, "employee_work_info", None), "company_id", None)
+    if not company:
+        return Employee.objects.none(), None
+    employees = (
+        Employee.objects.filter(
+            employee_work_info__company_id=company,
+            is_active=True,
+        )
+        .select_related("employee_work_info", "employee_work_info__company_id")
+        .order_by("employee_first_name", "employee_last_name", "id")
+    )
+    return employees, company
+
+
+def _collect_leave_days(employees, month_start, month_end):
+    employee_ids = [employee.id for employee in employees]
+    if not employee_ids:
+        return set()
+    leave_days = set()
+    leave_requests = LeaveRequest.objects.filter(
+        employee_id__in=employee_ids,
+        status="approved",
+        start_date__lte=month_end,
+        end_date__gte=month_start,
+    )
+    for leave in leave_requests:
+        for leave_day in leave.requested_dates():
+            if month_start <= leave_day <= month_end:
+                leave_days.add((leave.employee_id_id, leave_day))
+    return leave_days
+
+
+def _resolve_daily_hour_account_status(
+    employee_id,
+    current_date,
+    expected_seconds,
+    logged_seconds,
+    work_record,
+    attendance_present,
+    leave_days,
+    holiday_dates,
+    weekend_dates,
+):
+    if expected_seconds == 0:
+        if logged_seconds == 0:
+            if (employee_id, current_date) in leave_days:
+                return "leave"
+            if work_record and (
+                work_record.is_leave_record
+                or work_record.work_record_type in {"HD"}
+                or (work_record.message and "leave" in work_record.message.lower())
+            ):
+                return "leave"
+            if current_date in holiday_dates:
+                return "leave"
+            if current_date in weekend_dates or (
+                work_record
+                and (work_record.min_hour_second or 0) == 0
+                and not attendance_present
+            ):
+                return "non_working"
+            return "missing"
+        return "overtime"
+    if logged_seconds == 0:
+        return "missing"
+    difference = logged_seconds - expected_seconds
+    if abs(difference) <= DAILY_HOUR_ACCOUNT_TOLERANCE_SECONDS:
+        return "full"
+    if difference > DAILY_HOUR_ACCOUNT_TOLERANCE_SECONDS:
+        return "overtime"
+    return "partial"
+
+
+def _compute_daily_hour_account_snapshot(request, year, month):
+    month_day_count = calendar.monthrange(year, month)[1]
+    month_dates = [date(year, month, day) for day in range(1, month_day_count + 1)]
+    month_start = month_dates[0]
+    month_end = month_dates[-1]
+
+    employees_qs, company = _get_hour_account_employees(request)
+    employees = list(employees_qs)
+
+    weekend_dates = {day for day in month_dates if day.weekday() >= 5}
+    holiday_dates = {
+        day
+        for day in monthly_leave_days(month, year)
+        if month_start <= day <= month_end
+    }
+    holiday_dates.update(
+        {day for day in month_dates if is_holiday(day) or is_company_leave(day)}
+    )
+    leave_days = _collect_leave_days(employees, month_start, month_end)
+
+    employee_ids = [employee.id for employee in employees]
+
+    timesheet_lookup = defaultdict(int)
+    if employee_ids:
+        timesheets = TimeSheet.objects.filter(
+            employee_id__in=employee_ids,
+            date__range=(month_start, month_end),
+        )
+        for sheet in timesheets:
+            time_spent = sheet.time_spent or "00:00"
+            timesheet_lookup[(sheet.employee_id_id, sheet.date)] += strtime_seconds(
+                time_spent
+            )
+
+    attendance_lookup = {}
+    if employee_ids:
+        attendance_qs = (
+            Attendance.objects.filter(
+                employee_id__in=employee_ids,
+                attendance_date__range=(month_start, month_end),
+            )
+            .select_related("employee_id")
+        )
+        attendance_lookup = {
+            (attendance.employee_id_id, attendance.attendance_date): attendance
+            for attendance in attendance_qs
+        }
+
+    work_record_lookup = {}
+    if employee_ids:
+        work_records = (
+            WorkRecords.objects.filter(
+                employee_id__in=employee_ids,
+                date__range=(month_start, month_end),
+            )
+            .select_related("attendance_id")
+        )
+        work_record_lookup = {
+            (record.employee_id_id, record.date): record for record in work_records
+        }
+
+    day_totals = {day: {"expected": 0, "logged": 0} for day in month_dates}
+    overall_logged = 0
+    overall_expected = 0
+    employees_payload = []
+
+    for employee in employees:
+        row_cells = []
+        row_logged = 0
+        row_expected = 0
+
+        for current_date in month_dates:
+            key = (employee.id, current_date)
+            attendance = attendance_lookup.get(key)
+            work_record = work_record_lookup.get(key)
+            logged_seconds = timesheet_lookup.get(key, 0)
+
+            expected_seconds = 0
+            if attendance:
+                if attendance.at_work_second is not None:
+                    expected_seconds = attendance.at_work_second
+                elif attendance.attendance_worked_hour:
+                    expected_seconds = strtime_seconds(
+                        attendance.attendance_worked_hour or "00:00"
+                    )
+            elif work_record:
+                if work_record.at_work_second:
+                    expected_seconds = work_record.at_work_second
+                elif work_record.at_work:
+                    expected_seconds = strtime_seconds(work_record.at_work)
+
+            check_in = (
+                attendance.attendance_clock_in.strftime("%H:%M")
+                if attendance and attendance.attendance_clock_in
+                else "--"
+            )
+            check_out = (
+                attendance.attendance_clock_out.strftime("%H:%M")
+                if attendance and attendance.attendance_clock_out
+                else "--"
+            )
+
+            status = _resolve_daily_hour_account_status(
+                employee.id,
+                current_date,
+                expected_seconds,
+                logged_seconds,
+                work_record,
+                bool(attendance),
+                leave_days,
+                holiday_dates,
+                weekend_dates,
+            )
+            css_class = DAILY_HOUR_ACCOUNT_STATUS_CLASSES[status]
+
+            note = None
+            if work_record:
+                title = work_record.title_message()
+                if title:
+                    note = title
+
+            row_cells.append(
+                {
+                    "date": current_date,
+                    "logged_seconds": logged_seconds,
+                    "expected_seconds": expected_seconds,
+                    "logged": format_time(logged_seconds),
+                    "expected": format_time(expected_seconds),
+                    "check_in": check_in,
+                    "check_out": check_out,
+                    "status": status,
+                    "css_class": css_class,
+                    "note": note,
+                }
+            )
+
+            row_logged += logged_seconds
+            row_expected += expected_seconds
+            day_totals[current_date]["logged"] += logged_seconds
+            day_totals[current_date]["expected"] += expected_seconds
+
+        overall_logged += row_logged
+        overall_expected += row_expected
+
+        employees_payload.append(
+            {
+                "instance": employee,
+                "cells": row_cells,
+                "total_logged_seconds": row_logged,
+                "total_expected_seconds": row_expected,
+                "total_logged": format_time(row_logged),
+                "total_expected": format_time(row_expected),
+            }
+        )
+
+    day_totals_list = [
+        {
+            "date": day,
+            "logged_seconds": totals["logged"],
+            "expected_seconds": totals["expected"],
+            "logged": format_time(totals["logged"]),
+            "expected": format_time(totals["expected"]),
+        }
+        for day, totals in day_totals.items()
+    ]
+
+    return {
+        "company": company,
+        "employees": employees_payload,
+        "month_dates": month_dates,
+        "day_totals": day_totals_list,
+        "overall": {
+            "logged_seconds": overall_logged,
+            "expected_seconds": overall_expected,
+            "logged": format_time(overall_logged),
+            "expected": format_time(overall_expected),
+        },
+    }
+
+
+def _navigate_month(year, month, step):
+    new_month = month + step
+    new_year = year
+    if new_month < 1:
+        new_month = 12
+        new_year -= 1
+    elif new_month > 12:
+        new_month = 1
+        new_year += 1
+    return new_year, new_month
+
+
+@login_required
+@permission_required("attendance.view_attendance")
+def daily_hour_account(request):
+    today = date.today()
+    context = {
+        "current_date": today,
+        "initial_month": today.strftime("%Y-%m"),
+        "pd": request.GET.urlencode(),
+    }
+    return render(
+        request,
+        "attendance/daily_hour_account/daily_hour_account_view.html",
+        context,
+    )
+
+
+@login_required
+@permission_required("attendance.view_attendance")
+@hx_request_required
+def daily_hour_account_grid(request):
+    month_param = request.GET.get("month")
+    year_param = request.GET.get("year")
+    if month_param and "-" in month_param:
+        try:
+            year_value, month_value = month_param.split("-")
+            year = int(year_value)
+            month = int(month_value)
+        except (TypeError, ValueError):
+            return HttpResponseBadRequest("Invalid month parameter.")
+    else:
+        try:
+            month = int(request.GET.get("month", date.today().month))
+            year = int(year_param or date.today().year)
+        except ValueError:
+            return HttpResponseBadRequest("Invalid month or year parameter.")
+
+    snapshot = _compute_daily_hour_account_snapshot(request, year, month)
+    prev_year, prev_month = _navigate_month(year, month, -1)
+    next_year, next_month = _navigate_month(year, month, 1)
+    prev_month_value = f"{prev_year}-{prev_month:02d}"
+    next_month_value = f"{next_year}-{next_month:02d}"
+
+    context = {
+        "company": snapshot["company"],
+        "employees_data": snapshot["employees"],
+        "month_dates": snapshot["month_dates"],
+        "day_totals": snapshot["day_totals"],
+        "overall": snapshot["overall"],
+        "selected_year": year,
+        "selected_month": month,
+        "selected_month_value": f"{year}-{month:02d}",
+        "month_label": datetime(year, month, 1).strftime("%B %Y"),
+        "prev_year": prev_year,
+        "prev_month": prev_month,
+        "next_year": next_year,
+        "next_month": next_month,
+        "prev_month_value": prev_month_value,
+        "next_month_value": next_month_value,
+        "pd": request.GET.urlencode(),
+    }
+    return render(
+        request,
+        "attendance/daily_hour_account/daily_hour_account_table.html",
+        context,
+    )
+
+
+@login_required
+@permission_required("attendance.view_attendance")
+def daily_hour_account_export(request):
+    month_param = request.GET.get("month")
+    year_param = request.GET.get("year")
+    if month_param and "-" in month_param:
+        try:
+            year_value, month_value = month_param.split("-")
+            year = int(year_value)
+            month = int(month_value)
+        except (TypeError, ValueError):
+            return HttpResponseBadRequest("Invalid month parameter.")
+    else:
+        try:
+            month = int(request.GET.get("month", date.today().month))
+            year = int(year_param or date.today().year)
+        except ValueError:
+            return HttpResponseBadRequest("Invalid month or year parameter.")
+
+    snapshot = _compute_daily_hour_account_snapshot(request, year, month)
+    month_dates = snapshot["month_dates"]
+    employees_data = snapshot["employees"]
+
+    day_headers = [f"{day.day:02d}" for day in month_dates]
+    columns = ["Employee", "Badge ID"] + day_headers + ["Logged Total", "Expected Total"]
+    data_rows = []
+    for entry in employees_data:
+        employee = entry["instance"]
+        row = {
+            "Employee": str(employee),
+            "Badge ID": employee.badge_id or "",
+            "Logged Total": entry["total_logged"],
+            "Expected Total": entry["total_expected"],
+        }
+        for cell in entry["cells"]:
+            header = f"{cell['date'].day:02d}"
+            row[header] = f"{cell['logged']} / {cell['expected']}"
+        for header in day_headers:
+            row.setdefault(header, "00:00 / 00:00")
+        data_rows.append(row)
+
+    df = pd.DataFrame(data_rows, columns=columns)
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+        df.to_excel(writer, index=False, sheet_name="Hour Account")
+    output.seek(0)
+
+    month_label = datetime(year, month, 1).strftime("%Y_%m")
+    filename = f"daily_hour_account_{month_label}.xlsx"
+    response = HttpResponse(
+        output.getvalue(),
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
+    return response
+
 
 
 @login_required

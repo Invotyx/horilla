@@ -136,11 +136,7 @@ class BiometricDevices(HorillaModel):
                 )
 
         if self.machine_type == "zk":
-            if not self.zk_password:
-                required_fields["zk_password"] = _(
-                    "The password is required for ZKTeco Biometric Device."
-                )
-            else:
+            if self.zk_password:
                 try:
                     int(self.zk_password)
                 except ValueError:

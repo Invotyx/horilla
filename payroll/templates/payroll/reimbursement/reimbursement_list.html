@@ -1137,7 +1137,8 @@
                                     <div class="oh-checkpoint-badge oh-checkpoint-badge--secondary me-3">{{ item.count }}</div>
                                     <div class="text-end me-3">
                                         {% trans "Total Claimed" %}: {{ item.total }}<br />
-                                        {% trans "Remaining Balance" %}: {{ item.remaining }}
+                                        {% trans "Prorated Allowance" %}: {{ item.prorated_allowance }}<br />
+                                        {% trans "Available Allowance" %}: {{ item.available_allowance }}
                                     </div>
                                     <div class="dropdown-icon ms-2">
                                         <i class="bi bi-chevron-down"></i>  <!-- Or any icon you use -->
@@ -1293,7 +1294,7 @@
                                     </div>
                                 </div>
                                 <div class="mt-2 fw-bold">
-                                    {% trans "Cumulative Total" %}: {{ item.total }} | {% trans "Remaining Balance" %}: {{ item.remaining }}
+                                    {% trans "Cumulative Total" %}: {{ item.total }} | {% trans "Prorated Allowance" %}: {{ item.prorated_allowance }} | {% trans "Available Allowance" %}: {{ item.available_allowance }}
                                 </div>
                             {% else %}
                                 <p>{% trans "No claims exist" %}</p>

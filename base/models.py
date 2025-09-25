@@ -1412,14 +1412,21 @@ class MultipleApprovalCondition(HorillaModel):
         queryset = MultipleApprovalManagers.objects.filter(
             condition_id=self.pk
         ).order_by("sequence")
+
+        employee_ids = [query.employee_id for query in queryset if query.employee_id]
+        employee_map = {
+            employee.id: employee
+            for employee in Employee.objects.entire().filter(id__in=employee_ids)
+        }
+
         for query in queryset:
             emp_id = query.employee_id
-            employee = (
-                query.reporting_manager
-                if not emp_id
-                else Employee.objects.get(id=emp_id)
-            )
-            managers.append(employee)
+            if not emp_id:
+                managers.append(query.reporting_manager)
+                continue
+            employee = employee_map.get(emp_id)
+            if employee:
+                managers.append(employee)
 
         return managers
 
@@ -1855,3 +1862,4 @@ class NotificationSound(models.Model):
 
 
 User.add_to_class("is_new_employee", models.BooleanField(default=False))
+

@@ -2353,11 +2353,26 @@ class MultipleApproveConditionForm(ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        employees = (
+            Employee.objects.entire().filter(is_active=True).order_by(
+                "employee_first_name", "employee_last_name"
+            )
+        )
         choices = [("reporting_manager_id", _("Reporting Manager"))] + [
-            (employee.pk, str(employee)) for employee in Employee.objects.all()
+            (employee.pk, str(employee)) for employee in employees
         ]
         self.fields["multi_approval_manager"].choices = choices
-        if self.instance.pk and self.instance.department.count() == Department.objects.count():
+        if "company_id" in self.fields:
+            self.fields["company_id"].queryset = Company.objects.all().order_by("company")
+        if "department" in self.fields:
+            self.fields["department"].queryset = (
+                Department.objects.entire().order_by("department")
+            )
+        if (
+            self.instance.pk
+            and self.instance.department.count()
+            == Department.objects.entire().count()
+        ):
             self.fields["all_departments"].initial = True
         condition_type = (
             self.data.get("condition_type")
@@ -2886,3 +2901,4 @@ class PenaltyAccountForm(ModelForm):
                 id__in=available_leaves.values_list("leave_type_id", flat=True)
             )
             self.fields["leave_type_id"].queryset = assigned_leave_types
+

@@ -260,7 +260,7 @@
                                 <a href="{{ att.url }}" target="_blank" rel="noopener">{{ att.name }}</a>
                             </div>
                         {% empty %}
-                            <div class="oh-text--muted">{% trans "No attachments uploaded" %}</div>
+                            {% comment %} <div class="oh-text--muted">{% trans "No attachments uploaded" %}</div> {% endcomment %}
                         {% endfor %}
                     </div>
                 </div>
@@ -305,8 +305,10 @@
                 {% with user_dept=request.user.employee_get.employee_work_info.department_id %}
                 {% if user_dept and user_dept.department == 'Accounts & Finance' and reimbursement.type == 'medical_encashment' %}
                     {% if reimbursement.status != 'requested' and reimbursement.last_approved_department == 'Accounts & Finance' %}
+
                         {% if reimbursement.status != 'closed'  %}     
                             <a
+
                             href="{% url 'approve-reimbursements' %}?ids={{reimbursement.id}}&status=closed"
                             onclick="return confirm('Confirm payment completion?')"
                             class="oh-btn oh-btn--info w-25"

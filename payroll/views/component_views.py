@@ -6,6 +6,7 @@ This module is used to write methods to the component_urls patterns respectively
 
 import json
 import operator
+from decimal import Decimal
 from collections import defaultdict
 from datetime import date, datetime, timedelta
 from itertools import groupby
@@ -87,6 +88,68 @@ from payroll.models.models import (
     ReimbursementrequestComment,
 )
 from payroll.threadings.mail import MailSendThread
+
+
+MEDICAL_ANNUAL_ALLOWANCE = Decimal("100000")
+MEDICAL_MONTHLY_ALLOWANCE = Decimal("8333")
+FISCAL_YEAR_MONTHS = 12
+FISCAL_YEAR_START_MONTH = 7
+FISCAL_YEAR_START_DAY = 1
+
+
+def get_medical_fiscal_period(reference=None):
+    """Return start and end dates for the medical allowance fiscal year."""
+    reference = reference or date.today()
+    if reference.month >= FISCAL_YEAR_START_MONTH:
+        start_year = reference.year
+    else:
+        start_year = reference.year - 1
+    start = date(start_year, FISCAL_YEAR_START_MONTH, FISCAL_YEAR_START_DAY)
+    end = date(start_year + 1, FISCAL_YEAR_START_MONTH, FISCAL_YEAR_START_DAY)
+    return start, end
+
+
+def _months_between(start_date, end_date):
+    """Return the count of full months between start_date and end_date."""
+    return (end_date.year - start_date.year) * 12 + (end_date.month - start_date.month)
+
+
+def get_employee_join_date(employee):
+    """Safely fetch the employee joining date if available."""
+    try:
+        work_info = employee.employee_work_info
+    except EmployeeWorkInformation.DoesNotExist:
+        return None
+    return work_info.date_joining
+
+
+def calculate_prorated_medical_allowance(employee, fiscal_start, fiscal_end):
+    """Compute the prorated medical allowance for the fiscal year."""
+    join_date = get_employee_join_date(employee)
+    if not join_date:
+        return MEDICAL_ANNUAL_ALLOWANCE
+    if join_date >= fiscal_end:
+        months_missed = FISCAL_YEAR_MONTHS
+    elif join_date <= fiscal_start:
+        months_missed = 0
+    else:
+        join_month_start = join_date.replace(day=1)
+        months_missed = _months_between(fiscal_start, join_month_start)
+        if months_missed < 0:
+            months_missed = 0
+        elif months_missed > FISCAL_YEAR_MONTHS:
+            months_missed = FISCAL_YEAR_MONTHS
+    prorated = MEDICAL_ANNUAL_ALLOWANCE - (MEDICAL_MONTHLY_ALLOWANCE * months_missed)
+    if prorated < 0:
+        prorated = Decimal("0")
+    return prorated
+
+
+def decimal_or_zero(value):
+    """Safely convert a numeric value to Decimal."""
+    if value is None:
+        return Decimal("0")
+    return Decimal(value)
 
 
 def return_none(a, b):
@@ -1580,39 +1643,40 @@ def view_reimbursement(request):
     if not request.user.has_perm("payroll.view_reimbursement"):
         employees = employees.filter(id=request.user.employee_get.id)
 
-    # calculate fiscal year range starting from July 1
-    today = date.today()
-    if today.month >= 7:
-        start = date(today.year, 7, 1)
-        end = date(today.year + 1, 7, 1)
-    else:
-        start = date(today.year - 1, 7, 1)
-        end = date(today.year, 7, 1)
-        
-    
+    fiscal_start, fiscal_end = get_medical_fiscal_period()
     medical_groups = []
     for emp in employees:
         emp_claims = medical_encashments.filter(employee_id=emp).prefetch_related(
             "other_attachments"
         )
-        approved_total = (
-            emp_claims.filter(status__in=["closed"], allowance_on__gte=start, allowance_on__lt=end)
+        approved_total = decimal_or_zero(
+            emp_claims.filter(
+                status__in=["closed"],
+                allowance_on__gte=fiscal_start,
+                allowance_on__lt=fiscal_end,
+            )
             .aggregate(total=Sum("amount"))
             .get("total")
-            or 0
         )
+        prorated_allowance = calculate_prorated_medical_allowance(
+            emp, fiscal_start, fiscal_end
+        )
+        available_allowance = prorated_allowance - approved_total
+        if available_allowance < 0:
+            available_allowance = Decimal("0")
 
         medical_groups.append(
             {
                 "employee": emp,
                 "claims": list(emp_claims),
-
                 "total": approved_total,
-                "remaining": 100000 - approved_total,
+                "prorated_allowance": prorated_allowance,
+                "available_allowance": available_allowance,
+                "remaining": available_allowance,
                 "count": emp_claims.count(),
-
             }
         )
+
     data_dict = {"status": ["requested"]}
     view = request.GET.get("view")
     template = "payroll/reimbursement/view_reimbursement.html"
@@ -1699,40 +1763,41 @@ def search_reimbursement(request):
     employees = Employee.objects.all()
     if not request.user.has_perm("payroll.view_reimbursement"):
         employees = employees.filter(id=request.user.employee_get.id)
-      
-        # calculate fiscal year range starting from July 1
-    today = date.today()
-    if today.month >= 7:
-        start = date(today.year, 7, 1)
-        end = date(today.year + 1, 7, 1)
-    else:
-        start = date(today.year - 1, 7, 1)
-        end = date(today.year, 7, 1)
-        
-    
+
+    fiscal_start, fiscal_end = get_medical_fiscal_period()
     medical_groups = []
     for emp in employees:
         emp_claims = medical_encashments.filter(employee_id=emp).prefetch_related(
             "other_attachments"
         )
-        approved_total = (
-            emp_claims.filter(status="closed", allowance_on__gte=start, allowance_on__lt=end)
+        approved_total = decimal_or_zero(
+            emp_claims.filter(
+                status__in=["closed"],
+                allowance_on__gte=fiscal_start,
+                allowance_on__lt=fiscal_end,
+            )
             .aggregate(total=Sum("amount"))
             .get("total")
-            or 0
         )
+        prorated_allowance = calculate_prorated_medical_allowance(
+            emp, fiscal_start, fiscal_end
+        )
+        available_allowance = prorated_allowance - approved_total
+        if available_allowance < 0:
+            available_allowance = Decimal("0")
 
         medical_groups.append(
             {
                 "employee": emp,
                 "claims": list(emp_claims),
-
                 "total": approved_total,
-                "remaining": 100000 - approved_total,
+                "prorated_allowance": prorated_allowance,
+                "available_allowance": available_allowance,
+                "remaining": available_allowance,
                 "count": emp_claims.count(),
-
             }
         )
+
     reimbursements_ids = json.dumps(list(reimbursements.values_list("id", flat=True)))
     leave_encashments_ids = json.dumps(
         list(leave_encashments.values_list("id", flat=True))
@@ -1789,39 +1854,61 @@ def medical_tab(request, emp_id):
     ):
         return HttpResponse(status=403)
 
+    fiscal_start, fiscal_end = get_medical_fiscal_period()
     claims_qs = (
         Reimbursement.objects.filter(
             employee_id=employee, type="medical_encashment"
-        ).order_by("-created_at")
+        )
+        .order_by("-created_at")
     )
 
-    total_limit = 100000
-    availed = (
-        claims_qs.filter(status="closed").aggregate(total=Sum("amount"))["total"]
-        or 0
+    prorated_allowance = calculate_prorated_medical_allowance(
+        employee, fiscal_start, fiscal_end
     )
-    remaining = total_limit - availed
+    availed = decimal_or_zero(
+        claims_qs.filter(
+            status="closed",
+            allowance_on__gte=fiscal_start,
+            allowance_on__lt=fiscal_end,
+        )
+        .aggregate(total=Sum("amount"))
+        .get("total")
+    )
+    available_allowance = prorated_allowance - availed
+    if available_allowance < 0:
+        available_allowance = Decimal("0")
 
-    cumulative = 0
+    cumulative = Decimal("0")
     claims = []
-    for claim in claims_qs:
-        cumulative += claim.amount
+    for claim in claims_qs.filter(
+        allowance_on__gte=fiscal_start, allowance_on__lt=fiscal_end
+    ):
+        cumulative += decimal_or_zero(claim.amount)
+        remaining_after_claim = prorated_allowance - cumulative
+        if remaining_after_claim < 0:
+            remaining_after_claim = Decimal("0")
         claims.append(
             {
                 "instance": claim,
                 "cumulative": cumulative,
-                "remaining": total_limit - cumulative,
+                "remaining": remaining_after_claim,
             }
         )
 
     context = {
         "employee": employee,
-        "total_limit": total_limit,
+        "total_limit": MEDICAL_ANNUAL_ALLOWANCE,
+        "prorated_allowance": prorated_allowance,
         "availed": availed,
-        "remaining": remaining,
+        "remaining": available_allowance,
+        "available_allowance": available_allowance,
+        "monthly_allowance": MEDICAL_MONTHLY_ALLOWANCE,
         "claims": claims,
     }
     return render(request, "tabs/medical-tab.html", context)
+
+
+
 
 @login_required
 def get_assigned_leaves(request):

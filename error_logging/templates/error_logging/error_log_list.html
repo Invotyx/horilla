@@ -1,0 +1,202 @@
+{% extends "index.html" %}
+{% load i18n %}
+
+{% block content %}
+<section class="oh-wrapper oh-main__topbar">
+    <div class="oh-main__titlebar oh-main__titlebar--left">
+        <h1 class="oh-main__titlebar-title fw-bold">{% trans "System Error Logs" %}</h1>
+        <p class="oh-main__titlebar-subtitle text-muted mb-0">
+            {% blocktrans %}Review captured application errors to identify patterns and track resolutions.{% endblocktrans %}
+        </p>
+    </div>
+</section>
+
+<div class="oh-wrapper">
+    <div class="oh-card">
+        <div class="oh-card__header">
+            <div class="d-flex flex-wrap gap-3">
+                <div>
+                    <span class="oh-badge oh-badge--secondary">{% trans "Total" %}</span>
+                    <span class="fw-bold ms-1">{{ summary.total }}</span>
+                </div>
+                <div>
+                    <span class="oh-badge oh-badge--success">{% trans "Resolved" %}</span>
+                    <span class="fw-bold ms-1">{{ summary.resolved }}</span>
+                </div>
+                <div>
+                    <span class="oh-badge oh-badge--danger">{% trans "Unresolved" %}</span>
+                    <span class="fw-bold ms-1">{{ summary.unresolved }}</span>
+                </div>
+            </div>
+        </div>
+        <div class="oh-card__body">
+            <form method="get" class="row g-3 mb-4">
+                <div class="col-12 col-md-2">
+                    <label class="form-label" for="status-filter">{% trans "Status" %}</label>
+                    <select id="status-filter" class="oh-select" name="status">
+                        <option value="">{% trans "All" %}</option>
+                        {% for code in status_codes %}
+                            <option value="{{ code }}" {% if filter_values.status|stringformat:'s' == code|stringformat:'s' %}selected{% endif %}>{{ code }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-12 col-md-2">
+                    <label class="form-label" for="resolved-filter">{% trans "Resolution" %}</label>
+                    <select id="resolved-filter" class="oh-select" name="resolved">
+                        <option value="">{% trans "All" %}</option>
+                        <option value="unresolved" {% if filter_values.resolved == 'unresolved' %}selected{% endif %}>{% trans "Unresolved" %}</option>
+                        <option value="resolved" {% if filter_values.resolved == 'resolved' %}selected{% endif %}>{% trans "Resolved" %}</option>
+                    </select>
+                </div>
+                <div class="col-12 col-md-2">
+                    <label class="form-label" for="user-filter">{% trans "User" %}</label>
+                    <select id="user-filter" class="oh-select" name="user">
+                        <option value="">{% trans "All" %}</option>
+                        {% for user in users %}
+                            <option value="{{ user.id }}" {% if filter_values.user|stringformat:'s' == user.id|stringformat:'s' %}selected{% endif %}>{{ user.get_full_name|default:user.username }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-12 col-md-3">
+                    <label class="form-label" for="module-filter">{% trans "Module / Page" %}</label>
+                    <input id="module-filter" class="oh-input" type="text" name="module" value="{{ filter_values.module }}" placeholder="{% trans 'Path or module name' %}">
+                </div>
+                <div class="col-12 col-md-3">
+                    <label class="form-label" for="query-filter">{% trans "Search" %}</label>
+                    <input id="query-filter" class="oh-input" type="text" name="q" value="{{ filter_values.q }}" placeholder="{% trans 'Message or stack trace' %}">
+                </div>
+                <div class="col-12 col-md-2 align-self-end">
+                    <button type="submit" class="oh-btn oh-btn--primary w-100">{% trans "Filter" %}</button>
+                </div>
+                <div class="col-12 col-md-2 align-self-end">
+                    <a href="{% url 'error_logging:error-log-list' %}" class="oh-btn oh-btn--light w-100">{% trans "Clear" %}</a>
+                </div>
+            </form>
+
+            <div class="table-responsive oh-sticky-table">
+                <table class="oh-table__table">
+                    <thead>
+                        <tr>
+                            <th scope="col">{% trans "Timestamp" %}</th>
+                            <th scope="col">{% trans "Status" %}</th>
+                            <th scope="col">{% trans "Module / Page" %}</th>
+                            <th scope="col">{% trans "User" %}</th>
+                            <th scope="col">{% trans "Details" %}</th>
+                            <th scope="col">{% trans "Resolution" %}</th>
+                            <th scope="col" class="text-end">{% trans "Actions" %}</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% if logs %}
+                            {% for log in logs %}
+                                <tr class="{% if not log.resolved %}table-warning{% endif %}">
+                                    <td data-title="{% trans 'Timestamp' %}">
+                                        {{ log.created_at|date:"SHORT_DATETIME_FORMAT" }}
+                                    </td>
+                                    <td data-title="{% trans 'Status' %}">
+                                        {% if log.status_code >= 500 %}
+                                            <span class="oh-badge oh-badge--danger">{{ log.status_code }}</span>
+                                        {% elif log.status_code >= 400 %}
+                                            <span class="oh-badge oh-badge--warning">{{ log.status_code }}</span>
+                                        {% else %}
+                                            <span class="oh-badge oh-badge--info">{{ log.status_code }}</span>
+                                        {% endif %}
+                                    </td>
+                                    <td data-title="{% trans 'Module / Page' %}">
+                                        <div class="fw-semibold">{{ log.module }}</div>
+                                        <div class="text-muted small">{{ log.path }}</div>
+                                    </td>
+                                    <td data-title="{% trans 'User' %}">
+                                        {% if log.user %}
+                                            {{ log.user.get_full_name|default:log.user.username }}
+                                        {% else %}
+                                            <span class="text-muted">{% trans "Anonymous" %}</span>
+                                        {% endif %}
+                                    </td>
+                                    <td data-title="{% trans 'Details' %}" class="text-break">
+                                        <details>
+                                            <summary class="fw-semibold">{{ log.message|truncatechars:120 }}</summary>
+                                            <div class="mt-2">
+                                                <p class="mb-2">{{ log.message }}</p>
+                                                {% if log.stack_trace %}
+                                                    <pre class="oh-code-block">{{ log.stack_trace }}</pre>
+                                                {% endif %}
+                                            </div>
+                                        </details>
+                                    </td>
+                                    <td data-title="{% trans 'Resolution' %}">
+                                        {% if log.resolved %}
+                                            <span class="oh-badge oh-badge--success">{% trans "Resolved" %}</span>
+                                            {% if log.resolved_at %}
+                                                <div class="text-muted small mt-1">{{ log.resolved_at|date:"SHORT_DATETIME_FORMAT" }}</div>
+                                            {% endif %}
+                                        {% else %}
+                                            <span class="oh-badge oh-badge--danger">{% trans "Unresolved" %}</span>
+                                        {% endif %}
+                                    </td>
+                                    <td class="text-end">
+                                        <form method="post" action="{% url 'error_logging:error-log-toggle' log.pk %}">
+                                            {% csrf_token %}
+                                            {% if log.resolved %}
+                                                <input type="hidden" name="action" value="unresolve">
+                                                <button type="submit" class="oh-btn oh-btn--light oh-btn--small">{% trans "Mark unresolved" %}</button>
+                                            {% else %}
+                                                <input type="hidden" name="action" value="resolve">
+                                                <button type="submit" class="oh-btn oh-btn--success oh-btn--small">{% trans "Mark resolved" %}</button>
+                                            {% endif %}
+                                        </form>
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        {% else %}
+                            <tr>
+                                <td colspan="7" class="text-center text-muted py-4">
+                                    {% trans "No error logs available." %}
+                                </td>
+                            </tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+
+            {% if page_obj.has_other_pages %}
+                <div class="oh-pagination__nav mt-3">
+                    <ul class="oh-pagination__items">
+                        <li class="oh-pagination__item oh-pagination__item--wide {% if not page_obj.has_previous %}disabled{% endif %}">
+                            {% if page_obj.has_previous %}
+                                <a class="oh-pagination__link" href="?{% if querystring %}{{ querystring }}&{% endif %}page=1">{% trans "First" %}</a>
+                            {% else %}
+                                <span class="oh-pagination__link">{% trans "First" %}</span>
+                            {% endif %}
+                        </li>
+                        <li class="oh-pagination__item oh-pagination__item--wide {% if not page_obj.has_previous %}disabled{% endif %}">
+                            {% if page_obj.has_previous %}
+                                <a class="oh-pagination__link" href="?{% if querystring %}{{ querystring }}&{% endif %}page={{ page_obj.previous_page_number }}">{% trans "Previous" %}</a>
+                            {% else %}
+                                <span class="oh-pagination__link">{% trans "Previous" %}</span>
+                            {% endif %}
+                        </li>
+                        <li class="oh-pagination__item oh-pagination__item--wide">
+                            <span class="oh-pagination__page">{% trans "Page" %} {{ page_obj.number }} {% trans "of" %} {{ page_obj.paginator.num_pages }}</span>
+                        </li>
+                        <li class="oh-pagination__item oh-pagination__item--wide {% if not page_obj.has_next %}disabled{% endif %}">
+                            {% if page_obj.has_next %}
+                                <a class="oh-pagination__link" href="?{% if querystring %}{{ querystring }}&{% endif %}page={{ page_obj.next_page_number }}">{% trans "Next" %}</a>
+                            {% else %}
+                                <span class="oh-pagination__link">{% trans "Next" %}</span>
+                            {% endif %}
+                        </li>
+                        <li class="oh-pagination__item oh-pagination__item--wide {% if not page_obj.has_next %}disabled{% endif %}">
+                            {% if page_obj.has_next %}
+                                <a class="oh-pagination__link" href="?{% if querystring %}{{ querystring }}&{% endif %}page={{ page_obj.paginator.num_pages }}">{% trans "Last" %}</a>
+                            {% else %}
+                                <span class="oh-pagination__link">{% trans "Last" %}</span>
+                            {% endif %}
+                        </li>
+                    </ul>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

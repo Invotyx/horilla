@@ -52,19 +52,29 @@
 									<div class="oh-accordion-body">
 										<div class="row">
 										<div class="col-sm-12 col-md-12 col-lg-12">
-											<div class="oh-input-group">
-												<a
-													id="generalSettings"
-													href="{% url 'general-settings' %}"
-													class="oh-inner-sidebar__link oh-dropdown__link"
-													>{% trans "General Settings" %}
-												</a>
-											</div>
-											<div class="oh-input-group">
-												{% if perms.auth.view_permission %}
-													<a
-														id="employeePermission"
-														href="{% url 'employee-permission-assign' %}"
+                                                <div class="oh-input-group">
+                                                        <a
+                                                                id="generalSettings"
+                                                                href="{% url 'general-settings' %}"
+                                                                class="oh-inner-sidebar__link oh-dropdown__link"
+                                                                >{% trans "General Settings" %}
+                                                        </a>
+                                                </div>
+                                                {% if perms.error_logging.view_errorlog %}
+                                                <div class="oh-input-group">
+                                                        <a
+                                                                id="systemErrorLogs"
+                                                                href="{% url 'error_logging:error-log-list' %}"
+                                                                class="oh-inner-sidebar__link oh-dropdown__link"
+                                                                >{% trans "System Error Logs" %}
+                                                        </a>
+                                                </div>
+                                                {% endif %}
+                                                <div class="oh-input-group">
+                                                        {% if perms.auth.view_permission %}
+                                                                <a
+                                                                        id="employeePermission"
+                                                                        href="{% url 'employee-permission-assign' %}"
 														class="oh-inner-sidebar__link oh-dropdown__link"
 														>{% trans "Employee Permission" %}</a
 													>

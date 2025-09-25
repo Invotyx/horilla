@@ -35,6 +35,10 @@ urlpatterns = [
     path("", include("base.urls")),
     path("", include("horilla_automations.urls")),
     path("", include("horilla_views.urls")),
+    path(
+        "system/",
+        include(("error_logging.urls", "error_logging"), namespace="error_logging"),
+    ),
     path("employee/", include("employee.urls")),
     path("horilla-widget/", include("horilla_widgets.urls")),
     re_path(
@@ -46,3 +50,6 @@ urlpatterns = [
 
 # if settings.DEBUG:
 #     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+
+handler404 = "error_logging.views.page_not_found"
+handler500 = "error_logging.views.server_error"

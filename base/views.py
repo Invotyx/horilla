@@ -5850,13 +5850,11 @@ def audit_tag_update(request, tag_id):
 @permission_required("base.view_multipleapprovalcondition")
 def multiple_approval_condition(request):
     form = MultipleApproveConditionForm()
-    selected_company = request.session.get("selected_company")
-    if selected_company != "all":
-        conditions = MultipleApprovalCondition.objects.filter(
-            company_id=selected_company
-        ).order_by("-id")
-    else:
-        conditions = MultipleApprovalCondition.objects.all().order_by("-id")
+    conditions = (
+        MultipleApprovalCondition.objects.select_related("company_id")
+        .prefetch_related("department")
+        .order_by("company_id__company", "-id")
+    )
     create = True
     return render(
         request,
@@ -5869,13 +5867,11 @@ def multiple_approval_condition(request):
 @hx_request_required
 @permission_required("base.view_multipleapprovalcondition")
 def hx_multiple_approval_condition(request):
-    selected_company = request.session.get("selected_company")
-    if selected_company != "all":
-        conditions = MultipleApprovalCondition.objects.filter(
-            company_id=selected_company
-        ).order_by("-id")
-    else:
-        conditions = MultipleApprovalCondition.objects.all().order_by("-id")
+    conditions = (
+        MultipleApprovalCondition.objects.select_related("company_id")
+        .prefetch_related("department")
+        .order_by("company_id__company", "-id")
+    )
     return render(
         request,
         "multi_approval_condition/condition_table.html",
@@ -5914,8 +5910,13 @@ def add_more_approval_managers(request):
     if managers_count:
         managers_count = int(managers_count) + 1
         field_name = f"multi_approval_manager_{managers_count}"
+        employees = (
+            Employee.objects.entire().filter(is_active=True).order_by(
+                "employee_first_name", "employee_last_name"
+            )
+        )
         choices = [("reporting_manager_id", _("Reporting Manager"))] + [
-            (employee.pk, str(employee)) for employee in Employee.objects.all()
+            (employee.pk, str(employee)) for employee in employees
         ]
         form.fields[field_name] = forms.ChoiceField(
             choices=choices,
@@ -5973,9 +5974,11 @@ def multiple_level_approval_create(request):
         instance = MultipleApprovalCondition(condition_type=condition_type, company_id=company)
         if form.is_valid():
             departments = (
-                Department.objects.all()
+                Department.objects.entire()
                 if request.POST.get("all_departments")
-                else Department.objects.filter(id__in=request.POST.getlist("department"))
+                else Department.objects.entire().filter(
+                    id__in=request.POST.getlist("department")
+                )
             )
             instance.condition_field = condition_field
             instance.condition_operator = condition_operator
@@ -6018,8 +6021,13 @@ def edit_approval_managers(form, managers):
             form.initial["multi_approval_manager"] = manager.employee_id
         else:
             field_name = f"multi_approval_manager_{i}"
+            employees = (
+                Employee.objects.entire().filter(is_active=True).order_by(
+                    "employee_first_name", "employee_last_name"
+                )
+            )
             choices = [("reporting_manager_id", _("Reporting Manager"))] + [
-                (employee.pk, str(employee)) for employee in Employee.objects.all()
+                (employee.pk, str(employee)) for employee in employees
             ]
             form.fields[field_name] = forms.ChoiceField(
                 choices=choices,
@@ -6047,7 +6055,7 @@ def multiple_level_approval_edit(request, condition_id):
         if form.is_valid():
             instance = form.save()
             if form.cleaned_data.get("all_departments"):
-                instance.department.set(Department.objects.all())
+                instance.department.set(Department.objects.entire())
             messages.success(
                 request, _("Multiple approval condition updated successfully")
             )
@@ -6068,13 +6076,11 @@ def multiple_level_approval_edit(request, condition_id):
                         employee_id=employee_id,
                         reporting_manager=reporting_manager,
                     )
-    selected_company = request.session.get("selected_company")
-    if selected_company != "all":
-        conditions = MultipleApprovalCondition.objects.filter(
-            company_id=selected_company
-        ).order_by("-id")
-    else:
-        conditions = MultipleApprovalCondition.objects.all().order_by("-id")
+    conditions = (
+        MultipleApprovalCondition.objects.select_related("company_id")
+        .prefetch_related("department")
+        .order_by("company_id__company", "-id")
+    )
 
     return render(
         request,

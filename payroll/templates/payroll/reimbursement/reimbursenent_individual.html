@@ -305,14 +305,16 @@
                 {% with user_dept=request.user.employee_get.employee_work_info.department_id %}
                 {% if user_dept and user_dept.department == 'Accounts & Finance' and reimbursement.type == 'medical_encashment' %}
                     {% if reimbursement.status != 'requested' and reimbursement.last_approved_department == 'Accounts & Finance' %}
-                        <a
+                        {% if reimbursement.status != 'closed'  %}     
+                            <a
                             href="{% url 'approve-reimbursements' %}?ids={{reimbursement.id}}&status=closed"
                             onclick="return confirm('Confirm payment completion?')"
                             class="oh-btn oh-btn--info w-25"
                             title="{% trans 'Payment Completion' %}"
-                        >
+                            >
                             <ion-icon name="checkmark-done-circle-outline"></ion-icon>
-                        </a>
+                            </a>
+                        {% endif %}
                         <a
                             href="{% url 'reimbursement-print' reimbursement.id %}"
                             class="oh-btn oh-btn--warning w-25"

@@ -517,7 +517,8 @@
                                     {# Finance close/payment + print icons beside actions (medical claims) #}
                                     {% with user_dept=request.user.employee_get.employee_work_info.department_id %}
                                     {% if user_dept and user_dept.department == 'Accounts & Finance' and req.type == 'medical_encashment' and req.status != 'requested' and req.last_approved_department == 'Accounts & Finance' %}
-                                        <a
+                                        {% if req.status != 'closed'  %}    
+                                    <a
                                             href="{% url 'approve-reimbursements' %}?ids={{req.id}}&status=closed"
                                             onclick="event.stopPropagation(); return confirm('Confirm payment completion?')"
                                             class="btn btn-sm btn-primary me-1"
@@ -525,6 +526,7 @@
                                         >
                                             <ion-icon name="checkmark-done-circle-outline"></ion-icon>
                                         </a>
+                                        {% endif %}
                                         <a
                                             href="{% url 'reimbursement-print' req.id %}"
                                             class="btn btn-sm btn-warning me-1"
@@ -534,7 +536,8 @@
                                         >
                                             <ion-icon name="print-outline"></ion-icon>
                                         </a>
-                                    {% endif %}
+                                        {% endif %}
+                                
                                     {% endwith %}
 
                                     {% if perms.payroll.delete_reimbursement  %}

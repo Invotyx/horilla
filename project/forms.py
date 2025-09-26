@@ -247,6 +247,18 @@ class TimeSheetForm(ModelForm):
                 }
             )
 
+        # 👇 New logic for employee field
+        if not request.user.is_superuser:
+            # Preselect logged-in employee
+            self.fields["employee_id"].initial = employee.id  
+            # Disable the field so it can't be changed
+            self.fields["employee_id"].disabled = True
+        else:
+            # For superusers, allow dynamic create (editable)
+            if self.initial.get("project_id") == "dynamic_create":
+                self.fields["employee_id"].disabled = False
+
+
         if not request.user.has_perm("project.add_timesheet"):
             projects = Project.objects.filter(
                 Q(managers=employee)

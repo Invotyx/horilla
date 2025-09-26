@@ -116,6 +116,7 @@ from base.methods import (
 )
 from base.models import (
     AttendanceAllowedIP,
+    Company,
     EmployeeShiftSchedule,
     TrackLateComeEarlyOut,
     WorkType,
@@ -2300,19 +2301,43 @@ DAILY_HOUR_ACCOUNT_STATUS_CLASSES = {
 
 
 def _get_hour_account_employees(request):
-    employee = getattr(request.user, "employee_get", None)
-    company = getattr(getattr(employee, "employee_work_info", None), "company_id", None)
-    if not company:
-        return Employee.objects.none(), None
+    selected_company = request.session.get("selected_company")
+    selected_company_instance = request.session.get("selected_company_instance") or {}
+
     employees = (
         Employee.objects.filter(
-            employee_work_info__company_id=company,
+            employee_work_info__company_id__isnull=False,
             is_active=True,
         )
         .select_related("employee_work_info", "employee_work_info__company_id")
         .order_by("employee_first_name", "employee_last_name", "id")
     )
-    return employees, company
+
+    if selected_company == "all":
+        company_label = selected_company_instance.get("company") or _("All companies")
+        return employees, company_label
+
+    if selected_company:
+        try:
+            company_obj = Company.objects.get(id=selected_company)
+        except (Company.DoesNotExist, ValueError, TypeError):
+            company_obj = None
+        if company_obj:
+            return (
+                employees.filter(employee_work_info__company_id=company_obj),
+                company_obj,
+            )
+
+    employee = getattr(request.user, "employee_get", None)
+    company_obj = getattr(getattr(employee, "employee_work_info", None), "company_id", None)
+    if not company_obj:
+        return Employee.objects.none(), None
+
+    return (
+        employees.filter(employee_work_info__company_id=company_obj),
+        company_obj,
+    )
+
 
 
 def _collect_leave_days(employees, month_start, month_end):

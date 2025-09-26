@@ -11,192 +11,483 @@
     </div>
 </section>
 
-<div class="oh-wrapper">
-    <div class="oh-card">
-        <div class="oh-card__header">
-            <div class="d-flex flex-wrap gap-3">
-                <div>
-                    <span class="oh-badge oh-badge--secondary">{% trans "Total" %}</span>
-                    <span class="fw-bold ms-1">{{ summary.total }}</span>
-                </div>
-                <div>
-                    <span class="oh-badge oh-badge--success">{% trans "Resolved" %}</span>
-                    <span class="fw-bold ms-1">{{ summary.resolved }}</span>
-                </div>
-                <div>
-                    <span class="oh-badge oh-badge--danger">{% trans "Unresolved" %}</span>
-                    <span class="fw-bold ms-1">{{ summary.unresolved }}</span>
+<form id="error-log-bulk-form" method="post" action="{% url 'error_logging:error-log-bulk' %}" class="d-none">
+    {% csrf_token %}
+    <input type="hidden" name="redirect" value="{{ redirect_url }}">
+</form>
+
+<div class="oh-wrapper error-log-layout">
+    <div class="d-flex flex-column gap-4">
+        <section class="oh-card oh-card--surface error-log-card">
+            <div class="oh-card__header border-0 pb-0">
+                <h2 class="error-log-section__title">{% trans "Summary" %}</h2>
+            </div>
+            <div class="oh-card__body pt-0">
+                <div class="row g-3 error-log-statistics">
+                    <div class="col-12 col-sm-4 col-lg-3 col-xxl-2">
+                        <div class="error-log-stat error-log-stat--total">
+                            <span class="error-log-stat__label">{% trans "Total" %}</span>
+                            <span class="error-log-stat__value">{{ summary.total }}</span>
+                        </div>
+                    </div>
+                    <div class="col-12 col-sm-4 col-lg-3 col-xxl-2">
+                        <div class="error-log-stat error-log-stat--resolved">
+                            <span class="error-log-stat__label">{% trans "Resolved" %}</span>
+                            <span class="error-log-stat__value">{{ summary.resolved }}</span>
+                        </div>
+                    </div>
+                    <div class="col-12 col-sm-4 col-lg-3 col-xxl-2">
+                        <div class="error-log-stat error-log-stat--unresolved">
+                            <span class="error-log-stat__label">{% trans "Unresolved" %}</span>
+                            <span class="error-log-stat__value">{{ summary.unresolved }}</span>
+                        </div>
+                    </div>
                 </div>
             </div>
-        </div>
-        <div class="oh-card__body">
-            <form method="get" class="row g-3 mb-4">
-                <div class="col-12 col-md-2">
-                    <label class="form-label" for="status-filter">{% trans "Status" %}</label>
-                    <select id="status-filter" class="oh-select" name="status">
-                        <option value="">{% trans "All" %}</option>
-                        {% for code in status_codes %}
-                            <option value="{{ code }}" {% if filter_values.status|stringformat:'s' == code|stringformat:'s' %}selected{% endif %}>{{ code }}</option>
-                        {% endfor %}
-                    </select>
-                </div>
-                <div class="col-12 col-md-2">
-                    <label class="form-label" for="resolved-filter">{% trans "Resolution" %}</label>
-                    <select id="resolved-filter" class="oh-select" name="resolved">
-                        <option value="">{% trans "All" %}</option>
-                        <option value="unresolved" {% if filter_values.resolved == 'unresolved' %}selected{% endif %}>{% trans "Unresolved" %}</option>
-                        <option value="resolved" {% if filter_values.resolved == 'resolved' %}selected{% endif %}>{% trans "Resolved" %}</option>
-                    </select>
-                </div>
-                <div class="col-12 col-md-2">
-                    <label class="form-label" for="user-filter">{% trans "User" %}</label>
-                    <select id="user-filter" class="oh-select" name="user">
-                        <option value="">{% trans "All" %}</option>
-                        {% for user in users %}
-                            <option value="{{ user.id }}" {% if filter_values.user|stringformat:'s' == user.id|stringformat:'s' %}selected{% endif %}>{{ user.get_full_name|default:user.username }}</option>
-                        {% endfor %}
-                    </select>
-                </div>
-                <div class="col-12 col-md-3">
-                    <label class="form-label" for="module-filter">{% trans "Module / Page" %}</label>
-                    <input id="module-filter" class="oh-input" type="text" name="module" value="{{ filter_values.module }}" placeholder="{% trans 'Path or module name' %}">
-                </div>
-                <div class="col-12 col-md-3">
-                    <label class="form-label" for="query-filter">{% trans "Search" %}</label>
-                    <input id="query-filter" class="oh-input" type="text" name="q" value="{{ filter_values.q }}" placeholder="{% trans 'Message or stack trace' %}">
-                </div>
-                <div class="col-12 col-md-2 align-self-end">
-                    <button type="submit" class="oh-btn oh-btn--primary w-100">{% trans "Filter" %}</button>
-                </div>
-                <div class="col-12 col-md-2 align-self-end">
-                    <a href="{% url 'error_logging:error-log-list' %}" class="oh-btn oh-btn--light w-100">{% trans "Clear" %}</a>
-                </div>
-            </form>
+        </section>
 
-            <div class="table-responsive oh-sticky-table">
-                <table class="oh-table__table">
-                    <thead>
-                        <tr>
-                            <th scope="col">{% trans "Timestamp" %}</th>
-                            <th scope="col">{% trans "Status" %}</th>
-                            <th scope="col">{% trans "Module / Page" %}</th>
-                            <th scope="col">{% trans "User" %}</th>
-                            <th scope="col">{% trans "Details" %}</th>
-                            <th scope="col">{% trans "Resolution" %}</th>
-                            <th scope="col" class="text-end">{% trans "Actions" %}</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% if logs %}
-                            {% for log in logs %}
-                                <tr class="{% if not log.resolved %}table-warning{% endif %}">
-                                    <td data-title="{% trans 'Timestamp' %}">
-                                        {{ log.created_at|date:"SHORT_DATETIME_FORMAT" }}
-                                    </td>
-                                    <td data-title="{% trans 'Status' %}">
-                                        {% if log.status_code >= 500 %}
-                                            <span class="oh-badge oh-badge--danger">{{ log.status_code }}</span>
-                                        {% elif log.status_code >= 400 %}
-                                            <span class="oh-badge oh-badge--warning">{{ log.status_code }}</span>
-                                        {% else %}
-                                            <span class="oh-badge oh-badge--info">{{ log.status_code }}</span>
-                                        {% endif %}
-                                    </td>
-                                    <td data-title="{% trans 'Module / Page' %}">
-                                        <div class="fw-semibold">{{ log.module }}</div>
-                                        <div class="text-muted small">{{ log.path }}</div>
-                                    </td>
-                                    <td data-title="{% trans 'User' %}">
-                                        {% if log.user %}
-                                            {{ log.user.get_full_name|default:log.user.username }}
-                                        {% else %}
-                                            <span class="text-muted">{% trans "Anonymous" %}</span>
-                                        {% endif %}
-                                    </td>
-                                    <td data-title="{% trans 'Details' %}" class="text-break">
-                                        <details>
-                                            <summary class="fw-semibold">{{ log.message|truncatechars:120 }}</summary>
-                                            <div class="mt-2">
-                                                <p class="mb-2">{{ log.message }}</p>
-                                                {% if log.stack_trace %}
-                                                    <pre class="oh-code-block">{{ log.stack_trace }}</pre>
+        <section class="oh-card oh-card--surface error-log-card">
+            <div class="oh-card__header border-0 pb-0">
+                <h2 class="error-log-section__title">{% trans "Filters &amp; Search" %}</h2>
+            </div>
+            <div class="oh-card__body pt-0">
+                <form method="get" class="error-log-filters row gy-3 gx-3 gx-lg-4 align-items-end">
+                    <div class="col-12 col-md-6 col-lg-3 col-xxl-2">
+                        <label class="form-label fw-semibold text-muted text-uppercase small" for="status-filter">{% trans "Status" %}</label>
+                        <select id="status-filter" class="oh-select" name="status">
+                            <option value="">{% trans "All" %}</option>
+                            {% for code in status_codes %}
+                                <option value="{{ code }}" {% if filter_values.status|stringformat:'s' == code|stringformat:'s' %}selected{% endif %}>{{ code }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-12 col-md-6 col-lg-3 col-xxl-2">
+                        <label class="form-label fw-semibold text-muted text-uppercase small" for="resolved-filter">{% trans "Resolution" %}</label>
+                        <select id="resolved-filter" class="oh-select" name="resolved">
+                            <option value="">{% trans "All" %}</option>
+                            <option value="unresolved" {% if filter_values.resolved == 'unresolved' %}selected{% endif %}>{% trans "Unresolved" %}</option>
+                            <option value="resolved" {% if filter_values.resolved == 'resolved' %}selected{% endif %}>{% trans "Resolved" %}</option>
+                        </select>
+                    </div>
+                    <div class="col-12 col-md-6 col-lg-4 col-xxl-3">
+                        <label class="form-label fw-semibold text-muted text-uppercase small" for="user-filter">{% trans "User" %}</label>
+                        <select id="user-filter" class="oh-select" name="user">
+                            <option value="">{% trans "All" %}</option>
+                            {% for user in users %}
+                                {% ifchanged user.id %}
+                                    {% with first_name=user.first_name %}
+                                        <option value="{{ user.id }}" {% if filter_values.user|stringformat:'s' == user.id|stringformat:'s' %}selected{% endif %}>
+                                            {{ first_name|default:user.username }}
+                                        </option>
+                                    {% endwith %}
+                                {% endifchanged %}
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-12 col-md-6 col-lg-3 col-xxl-2">
+                        <label class="form-label fw-semibold text-muted text-uppercase small" for="module-filter">{% trans "Module / Page" %}</label>
+                        <input id="module-filter" class="form-control form-control-sm w-100" style="height:28px; max-width:500px; border:1px solid silver;" type="text" name="module" value="{{ filter_values.module }}" placeholder="{% trans 'Path or module name' %}">
+                    </div>
+                    <div class="col-12 col-md-6 col-lg-3 col-xxl-2">
+                        <label class="form-label fw-semibold text-muted text-uppercase small" for="query-filter">{% trans "Search trace" %}</label>
+                        <input id="query-filter" class="form-control form-control-sm w-100" style="height:28px; max-width:500px; border:1px solid silver;" type="text" name="q" value="{{ filter_values.q }}" placeholder="{% trans 'Message or stack trace' %}">
+                    </div>
+                    <div class="col-12 col-lg-4 col-xxl-2">
+                        <div class="d-flex flex-column flex-sm-row gap-2 w-100">
+                            <button type="submit" class="oh-btn oh-btn--primary flex-fill"><ion-icon name="funnel-outline" class="me-1 align-middle" aria-hidden="true"></ion-icon>{% trans "Filter" %}</button>
+                            <a href="{% url 'error_logging:error-log-list' %}" class="oh-btn oh-btn--light flex-fill"><ion-icon name="refresh-outline" class="me-1 align-middle" aria-hidden="true"></ion-icon>{% trans "Clear" %}</a>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </section>
+
+        <section class="oh-card oh-card--surface error-log-card">
+            <div class="oh-card__header border-0 pb-0">
+                <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
+                    <h2 class="error-log-section__title mb-0">{% trans "Log Entries" %}</h2>
+                    <div class="text-muted small">
+                        {% trans "Selected rows:" %} <span data-selected-count>0</span>
+                    </div>
+                </div>
+            </div>
+            <div class="oh-card__body pt-0">
+                <div class="d-flex flex-wrap align-items-center gap-3 mb-3">
+                    <div class="d-flex flex-wrap align-items-center gap-2">
+                        <label class="form-label fw-semibold text-muted text-uppercase small mb-0" for="bulk-action">{% trans "Bulk actions" %}</label>
+                        <select id="bulk-action" name="action" form="error-log-bulk-form" class="oh-select oh-select--sm" data-bulk-action>
+                            <option value="">{% trans "Choose" %}</option>
+                            <option value="resolve">{% trans "Mark resolved" %}</option>
+                            <option value="unresolve">{% trans "Mark unresolved" %}</option>
+                            <option value="delete">{% trans "Delete selected" %}</option>
+                        </select>
+                        <button type="submit" class="oh-btn oh-btn--primary oh-btn--small" form="error-log-bulk-form" data-bulk-submit disabled><ion-icon name="play-circle-outline" class="me-1 align-middle" aria-hidden="true"></ion-icon>{% trans "Apply" %}</button>
+                    </div>
+                    <button type="button" class="oh-btn oh-btn--light oh-btn--small" data-clear-selection><ion-icon name="close-circle-outline" class="me-1 align-middle" aria-hidden="true"></ion-icon>{% trans "Clear selection" %}</button>
+                </div>
+
+                <div class="table-responsive error-log-table-wrapper">
+                    <table class="oh-table__table error-log-table">
+                        <thead>
+                            <tr>
+                                <th scope="col" class="text-center error-log-table__select">
+                                    <input type="checkbox" class="form-check-input" data-bulk-toggle>
+                                </th>
+                                <th scope="col">{% trans "Timestamp" %}</th>
+                                <th scope="col">{% trans "Status" %}</th>
+                                <th scope="col">{% trans "Module / Page" %}</th>
+                                <th scope="col">{% trans "User" %}</th>
+                                <th scope="col">{% trans "Details" %}</th>
+                                <th scope="col">{% trans "Resolution" %}</th>
+                                <th scope="col" class="text-end">{% trans "Actions" %}</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% if logs %}
+                                {% for log in logs %}
+                                    <tr class="oh-table__row{% if not log.resolved %} error-log-row--unresolved{% endif %}" data-state="{% if log.resolved %}resolved{% else %}unresolved{% endif %}">
+                                        <td class="align-middle text-center">
+                                            <input type="checkbox" class="form-check-input" name="selected_ids" value="{{ log.pk }}" form="error-log-bulk-form" data-row-checkbox>
+                                        </td>
+                                        <td class="align-middle text-nowrap" data-title="{% trans 'Timestamp' %}">
+                                            <div class="fw-semibold">{{ log.created_at|date:"SHORT_DATETIME_FORMAT" }}</div>
+                                            {% if log.created_at %}
+                                                <div class="text-muted small">{{ log.created_at|timesince }} {% trans "ago" %}</div>
+                                            {% endif %}
+                                        </td>
+                                        <td class="align-middle text-center" data-title="{% trans 'Status' %}">
+                                            {% if log.status_code >= 500 %}
+                                                <span class="oh-badge oh-badge--danger">{{ log.status_code }}</span>
+                                            {% elif log.status_code >= 400 %}
+                                                <span class="oh-badge oh-badge--warning">{{ log.status_code }}</span>
+                                            {% else %}
+                                                <span class="oh-badge oh-badge--info">{{ log.status_code }}</span>
+                                            {% endif %}
+                                        </td>
+                                        <td class="align-middle text-break" data-title="{% trans 'Module / Page' %}">
+                                            <div class="fw-semibold">{{ log.module|default:"N/A" }}</div>
+                                            {% if log.path %}
+                                                <div class="text-muted small">{{ log.path }}</div>
+                                            {% endif %}
+                                        </td>
+                                        <td class="align-middle" data-title="{% trans 'User' %}">
+                                            {% if log.user %}
+                                                {% with first_name=log.user.first_name %}
+                                                    <div class="fw-semibold">{{ first_name|default:log.user.username }}</div>
+                                                {% endwith %}
+                                            {% else %}
+                                                <span class="text-muted">{% trans "Anonymous" %}</span>
+                                            {% endif %}
+                                        </td>
+                                        <td class="align-middle text-break" data-title="{% trans 'Details' %}">
+                                            {% with message=log.message %}
+                                                <details>
+                                                    <summary class="fw-semibold text-start" title="{{ message|default_if_none:'' }}">
+                                                        {% if message %}
+                                                            {{ message|truncatechars:120 }}
+                                                        {% else %}
+                                                            {% trans "No message captured" %}
+                                                        {% endif %}
+                                                    </summary>
+                                                    <div class="mt-2">
+                                                        {% if message %}
+                                                            <p class="mb-2 text-muted">{{ message }}</p>
+                                                        {% else %}
+                                                            <p class="mb-0 text-muted">{% trans "No message was recorded for this error." %}</p>
+                                                        {% endif %}
+                                                        {% if log.stack_trace %}
+                                                            <pre class="oh-code-block mb-0">{{ log.stack_trace }}</pre>
+                                                        {% endif %}
+                                                    </div>
+                                                </details>
+                                            {% endwith %}
+                                        </td>
+                                        <td class="align-middle" data-title="{% trans 'Resolution' %}">
+                                            {% if log.resolved %}
+                                                <span class="oh-badge oh-badge--success">{% trans "Resolved" %}</span>
+                                                {% if log.resolved_at %}
+                                                    <div class="text-muted small mt-1">{{ log.resolved_at|date:"SHORT_DATETIME_FORMAT" }}</div>
+                                                {% endif %}
+                                            {% else %}
+                                                <span class="oh-badge oh-badge--danger">{% trans "Unresolved" %}</span>
+                                            {% endif %}
+                                        </td>
+                                        <td class="align-middle text-end">
+                                            <div class="d-flex flex-wrap justify-content-end gap-2">
+                                                <form method="post" action="{% url 'error_logging:error-log-toggle' log.pk %}">
+                                                    {% csrf_token %}
+                                                    {% if log.resolved %}
+                                                        <input type="hidden" name="action" value="unresolve">
+                                                        <button type="submit" class="oh-btn oh-btn--light oh-btn--small"><ion-icon name="refresh-circle-outline" class="me-1 align-middle" aria-hidden="true"></ion-icon>{% trans "Mark unresolved" %}</button>
+                                                    {% else %}
+                                                        <input type="hidden" name="action" value="resolve">
+                                                        <button type="submit" class="oh-btn oh-btn--success oh-btn--small"><ion-icon name="checkmark-circle-outline" class="me-1 align-middle" aria-hidden="true"></ion-icon>{% trans "Mark resolved" %}</button>
+                                                    {% endif %}
+                                                </form>
+                                                {% if perms.error_logging.delete_errorlog %}
+                                                    <form method="post" action="{% url 'error_logging:error-log-bulk' %}">
+                                                        {% csrf_token %}
+                                                        <input type="hidden" name="action" value="delete">
+                                                        <input type="hidden" name="selected_ids" value="{{ log.pk }}">
+                                                        <input type="hidden" name="redirect" value="{{ redirect_url }}">
+                                                        <button type="submit" class="oh-btn oh-btn--danger oh-btn--small"><ion-icon name="trash-outline" class="me-1 align-middle" aria-hidden="true"></ion-icon>{% trans "Delete" %}</button>
+                                                    </form>
                                                 {% endif %}
                                             </div>
-                                        </details>
-                                    </td>
-                                    <td data-title="{% trans 'Resolution' %}">
-                                        {% if log.resolved %}
-                                            <span class="oh-badge oh-badge--success">{% trans "Resolved" %}</span>
-                                            {% if log.resolved_at %}
-                                                <div class="text-muted small mt-1">{{ log.resolved_at|date:"SHORT_DATETIME_FORMAT" }}</div>
-                                            {% endif %}
-                                        {% else %}
-                                            <span class="oh-badge oh-badge--danger">{% trans "Unresolved" %}</span>
-                                        {% endif %}
-                                    </td>
-                                    <td class="text-end">
-                                        <form method="post" action="{% url 'error_logging:error-log-toggle' log.pk %}">
-                                            {% csrf_token %}
-                                            {% if log.resolved %}
-                                                <input type="hidden" name="action" value="unresolve">
-                                                <button type="submit" class="oh-btn oh-btn--light oh-btn--small">{% trans "Mark unresolved" %}</button>
-                                            {% else %}
-                                                <input type="hidden" name="action" value="resolve">
-                                                <button type="submit" class="oh-btn oh-btn--success oh-btn--small">{% trans "Mark resolved" %}</button>
-                                            {% endif %}
-                                        </form>
+                                        </td>
+                                    </tr>
+                                {% endfor %}
+                            {% else %}
+                                <tr>
+                                    <td colspan="8" class="py-5">
+                                        <div class="text-center">
+                                            <p class="fw-semibold mb-1">{% trans "No system errors logged yet." %}</p>
+                                            <p class="text-muted mb-0">{% trans "Newly captured errors will appear here automatically." %}</p>
+                                        </div>
                                     </td>
                                 </tr>
-                            {% endfor %}
-                        {% else %}
-                            <tr>
-                                <td colspan="7" class="text-center text-muted py-4">
-                                    {% trans "No error logs available." %}
-                                </td>
-                            </tr>
-                        {% endif %}
-                    </tbody>
-                </table>
-            </div>
-
-            {% if page_obj.has_other_pages %}
-                <div class="oh-pagination__nav mt-3">
-                    <ul class="oh-pagination__items">
-                        <li class="oh-pagination__item oh-pagination__item--wide {% if not page_obj.has_previous %}disabled{% endif %}">
-                            {% if page_obj.has_previous %}
-                                <a class="oh-pagination__link" href="?{% if querystring %}{{ querystring }}&{% endif %}page=1">{% trans "First" %}</a>
-                            {% else %}
-                                <span class="oh-pagination__link">{% trans "First" %}</span>
                             {% endif %}
-                        </li>
-                        <li class="oh-pagination__item oh-pagination__item--wide {% if not page_obj.has_previous %}disabled{% endif %}">
-                            {% if page_obj.has_previous %}
-                                <a class="oh-pagination__link" href="?{% if querystring %}{{ querystring }}&{% endif %}page={{ page_obj.previous_page_number }}">{% trans "Previous" %}</a>
-                            {% else %}
-                                <span class="oh-pagination__link">{% trans "Previous" %}</span>
-                            {% endif %}
-                        </li>
-                        <li class="oh-pagination__item oh-pagination__item--wide">
-                            <span class="oh-pagination__page">{% trans "Page" %} {{ page_obj.number }} {% trans "of" %} {{ page_obj.paginator.num_pages }}</span>
-                        </li>
-                        <li class="oh-pagination__item oh-pagination__item--wide {% if not page_obj.has_next %}disabled{% endif %}">
-                            {% if page_obj.has_next %}
-                                <a class="oh-pagination__link" href="?{% if querystring %}{{ querystring }}&{% endif %}page={{ page_obj.next_page_number }}">{% trans "Next" %}</a>
-                            {% else %}
-                                <span class="oh-pagination__link">{% trans "Next" %}</span>
-                            {% endif %}
-                        </li>
-                        <li class="oh-pagination__item oh-pagination__item--wide {% if not page_obj.has_next %}disabled{% endif %}">
-                            {% if page_obj.has_next %}
-                                <a class="oh-pagination__link" href="?{% if querystring %}{{ querystring }}&{% endif %}page={{ page_obj.paginator.num_pages }}">{% trans "Last" %}</a>
-                            {% else %}
-                                <span class="oh-pagination__link">{% trans "Last" %}</span>
-                            {% endif %}
-                        </li>
-                    </ul>
+                        </tbody>
+                    </table>
                 </div>
-            {% endif %}
-        </div>
+
+                {% if page_obj.has_other_pages %}
+                    <div class="oh-pagination__nav mt-3">
+                        <ul class="oh-pagination__items">
+                            <li class="oh-pagination__item oh-pagination__item--wide {% if not page_obj.has_previous %}disabled{% endif %}">
+                                {% if page_obj.has_previous %}
+                                    <a class="oh-pagination__link" href="?{% if querystring %}{{ querystring }}&amp;{% endif %}page=1">{% trans "First" %}</a>
+                                {% else %}
+                                    <span class="oh-pagination__link">{% trans "First" %}</span>
+                                {% endif %}
+                            </li>
+                            <li class="oh-pagination__item oh-pagination__item--wide {% if not page_obj.has_previous %}disabled{% endif %}">
+                                {% if page_obj.has_previous %}
+                                    <a class="oh-pagination__link" href="?{% if querystring %}{{ querystring }}&amp;{% endif %}page={{ page_obj.previous_page_number }}">{% trans "Previous" %}</a>
+                                {% else %}
+                                    <span class="oh-pagination__link">{% trans "Previous" %}</span>
+                                {% endif %}
+                            </li>
+                            <li class="oh-pagination__item oh-pagination__item--wide ">
+                                <span class="oh-pagination__page">{% trans "Page" %} {{ page_obj.number }} {% trans "of" %} {{ page_obj.paginator.num_pages }}</span>
+                            </li>
+                            <li class="oh-pagination__item oh-pagination__item--wide {% if not page_obj.has_next %}disabled{% endif %}">
+                                {% if page_obj.has_next %}
+                                    <a class="oh-pagination__link" href="?{% if querystring %}{{ querystring }}&amp;{% endif %}page={{ page_obj.next_page_number }}">{% trans "Next" %}</a>
+                                {% else %}
+                                    <span class="oh-pagination__link">{% trans "Next" %}</span>
+                                {% endif %}
+                            </li>
+                            <li class="oh-pagination__item oh-pagination__item--wide {% if not page_obj.has_next %}disabled{% endif %}">
+                                {% if page_obj.has_next %}
+                                    <a class="oh-pagination__link" href="?{% if querystring %}{{ querystring }}&amp;{% endif %}page={{ page_obj.paginator.num_pages }}">{% trans "Last" %}</a>
+                                {% else %}
+                                    <span class="oh-pagination__link">{% trans "Last" %}</span>
+                                {% endif %}
+                            </li>
+                        </ul>
+                    </div>
+                {% endif %}
+            </div>
+        </section>
     </div>
 </div>
+
+<style>
+    .error-log-layout .error-log-card {
+        border: 1px solid rgba(15, 23, 42, 0.08);
+        border-radius: 1rem;
+        box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
+        overflow: hidden;
+        background-color: #fff;
+    }
+
+    .error-log-section__title {
+        font-size: 1.1rem;
+        font-weight: 600;
+        color: #0f172a;
+    }
+
+    .error-log-stat {
+        display: flex;
+        flex-direction: column;
+        gap: 0.2rem;
+        padding: 1.2rem 1.4rem;
+        border-radius: 0.85rem;
+        background-color: #f8fafc;
+        border: 1px solid rgba(15, 23, 42, 0.06);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+        height: 100%;
+    }
+
+    .error-log-stat__label {
+        text-transform: uppercase;
+        font-size: 0.75rem;
+        letter-spacing: 0.08em;
+        color: #64748b;
+        font-weight: 600;
+    }
+
+    .error-log-stat__value {
+        font-size: 1.75rem;
+        font-weight: 700;
+        color: #0f172a;
+        letter-spacing: -0.02em;
+    }
+
+    .error-log-stat--resolved .error-log-stat__value {
+        color: #0f766e;
+    }
+
+    .error-log-stat--unresolved .error-log-stat__value {
+        color: #b91c1c;
+    }
+
+    .error-log-table-wrapper {
+        border-radius: 0.85rem;
+        border: 1px solid rgba(15, 23, 42, 0.06);
+        overflow: hidden;
+    }
+
+    .error-log-table th,
+    .error-log-table td {
+        padding: 0.9rem 1rem;
+        vertical-align: middle;
+        background-color: transparent !important;
+    }
+
+    .error-log-table thead th {
+        font-size: 0.78rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: #475569;
+        background-color: #f8fafc !important;
+    }
+
+    .error-log-table__select {
+        width: 52px;
+    }
+
+    .error-log-row--unresolved {
+        background-image: linear-gradient(90deg, rgba(254, 226, 226, 0.6), rgba(255, 255, 255, 0));
+    }
+
+    .error-log-row--unresolved td:first-child {
+        border-left: 3px solid #f87171;
+    }
+
+    .error-log-table details > summary {
+        cursor: pointer;
+    }
+
+    .error-log-table details[open] summary {
+        color: #2563eb;
+    }
+
+    .error-log-table .oh-btn--small {
+        white-space: nowrap;
+    }
+
+    .error-log-filters .oh-select,
+    .error-log-filters .oh-input {
+        min-height: 2.75rem;
+    }
+
+    @media (max-width: 767.98px) {
+        .error-log-statistics {
+            flex-direction: column;
+        }
+
+        .error-log-table th,
+        .error-log-table td {
+            padding: 0.75rem 0.7rem;
+        }
+    }
+</style>
+
+<script>
+    (function () {
+        const bulkForm = document.getElementById('error-log-bulk-form');
+        if (!bulkForm) {
+            return;
+        }
+
+        const selectAllToggle = document.querySelector('[data-bulk-toggle]');
+        const rowCheckboxes = Array.from(document.querySelectorAll('[data-row-checkbox]'));
+        const selectedCount = document.querySelector('[data-selected-count]');
+        const clearButton = document.querySelector('[data-clear-selection]');
+        const actionSelect = document.querySelector('[data-bulk-action]');
+        const submitButton = document.querySelector('[data-bulk-submit]');
+
+        const getSelected = () => rowCheckboxes.filter((checkbox) => checkbox.checked);
+
+        const syncState = () => {
+            const selected = getSelected();
+            if (selectedCount) {
+                selectedCount.textContent = selected.length;
+            }
+
+            if (selectAllToggle) {
+                const total = rowCheckboxes.length;
+                const checked = selected.length;
+                selectAllToggle.checked = total > 0 && checked === total;
+                selectAllToggle.indeterminate = checked > 0 && checked < total;
+            }
+
+            if (submitButton) {
+                submitButton.disabled = !(selected.length && actionSelect && actionSelect.value);
+            }
+        };
+
+        if (selectAllToggle) {
+            selectAllToggle.addEventListener('change', () => {
+                rowCheckboxes.forEach((checkbox) => {
+                    checkbox.checked = selectAllToggle.checked;
+                });
+                syncState();
+            });
+        }
+
+        rowCheckboxes.forEach((checkbox) => {
+            checkbox.addEventListener('change', syncState);
+        });
+
+        if (actionSelect) {
+            actionSelect.addEventListener('change', syncState);
+        }
+
+        if (clearButton) {
+            clearButton.addEventListener('click', () => {
+                rowCheckboxes.forEach((checkbox) => {
+                    checkbox.checked = false;
+                });
+                if (selectAllToggle) {
+                    selectAllToggle.checked = false;
+                    selectAllToggle.indeterminate = false;
+                }
+                if (actionSelect) {
+                    actionSelect.value = '';
+                }
+                syncState();
+            });
+        }
+
+        if (submitButton) {
+            submitButton.addEventListener('click', (event) => {
+                const selected = getSelected();
+                if (!selected.length) {
+                    event.preventDefault();
+                    window.alert('{% trans "Select at least one log entry before applying a bulk action." %}');
+                    return;
+                }
+                if (!actionSelect || !actionSelect.value) {
+                    event.preventDefault();
+                    window.alert('{% trans "Choose a bulk action before submitting." %}');
+                }
+            });
+        }
+
+        syncState();
+    })();
+</script>
 {% endblock %}

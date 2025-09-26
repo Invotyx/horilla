@@ -1079,18 +1079,14 @@ def user_group_table(request):
 @login_required
 @require_http_methods(["POST"])
 @permission_required("auth.add_permission")
-def update_group_permission(
-    request,
-):
+def update_group_permission(request):
     """
-    This method is used to remove user permission.
+    This method is used to update group permissions and/or group name.
     """
     group_id = request.POST["id"]
     instance = Group.objects.get(id=group_id)
-    form = UserGroupForm(request.POST, instance=instance)
-    if form.is_valid():
-        form.save()
-        return JsonResponse({"message": "Updated the permissions", "type": "success"})
+
+    # Handle group name update
     if request.POST.get("name_update"):
         name = request.POST["name"]
         if len(name) > 3:
@@ -1098,12 +1094,22 @@ def update_group_permission(
             instance.save()
             return JsonResponse({"message": "Name updated", "type": "success"})
         return JsonResponse(
-            {"message": "At least 4 characters required", "type": "success"}
+            {"message": "At least 4 characters required", "type": "danger"}
         )
-    perms = form.cleaned_data.get("permissions")
-    if not perms:
+
+    # 🔑 Handle permissions update (using posted codenames)
+    permission_codes = request.POST.getlist("permissions")
+
+    if permission_codes:
+        # Fetch Permission objects by codename
+        perms = Permission.objects.filter(codename__in=permission_codes)
+        instance.permissions.set(perms)
+        return JsonResponse({"message": "Updated the permissions", "type": "success"})
+    else:
+        # No permissions selected → clear all
         instance.permissions.clear()
-        return JsonResponse({"message": "All permission cleared", "type": "info"})
+        return JsonResponse({"message": "All permissions cleared", "type": "info"})
+
     return JsonResponse({"message": "Something went wrong", "type": "danger"})
 
 

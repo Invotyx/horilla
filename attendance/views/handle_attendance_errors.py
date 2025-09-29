@@ -1,27 +1,27 @@
 """Module for handling attendance error data."""
 
 import uuid
+from io import BytesIO
+from urllib.parse import urljoin
 
 import pandas as pd
-from django.http import HttpResponse
-
-from horilla.horilla_settings import DYNAMIC_URL_PATTERNS
-from horilla.methods import remove_dynamic_url
+from django.conf import settings
+from django.core.files.base import ContentFile
+from django.core.files.storage import default_storage
 
 
 def handle_attendance_errors(error_list):
     """
     Reorganize a list of error dictionaries into a structured error data dictionary
-    and remove keys with all None values.
+    and remove keys with all None values, then store the result using Django's
+    configured storage backend.
 
     Parameters:
-        error_list (list of dict): A list of dictionaries containing error details.
+        error_list (list[dict]): A list of dictionaries containing error details.
 
     Returns:
-        dict: A structured dictionary where keys represent error types and values are lists
-              of error details for each type.
+        str: A URL that can be used to download the stored error file.
     """
-    keys_to_remove = []
     error_data = {
         "Badge ID": [],
         "Shift": [],
@@ -49,12 +49,10 @@ def handle_attendance_errors(error_list):
         "Check-out Date Error": [],
         "Other Errors": [],
     }
+
     for item in error_list:
         for key, value in error_data.items():
-            if key in item:
-                value.append(item[key])
-            else:
-                value.append(None)
+            value.append(item.get(key))
 
     keys_to_remove = [
         key for key, value in error_data.items() if all(v is None for v in value)
@@ -62,20 +60,23 @@ def handle_attendance_errors(error_list):
 
     for key in keys_to_remove:
         del error_data[key]
+
     data_frame = pd.DataFrame(error_data, columns=error_data.keys())
-    response = HttpResponse(content_type="application/ms-excel")
-    response["Content-Disposition"] = 'attachment; filename="ImportError.xlsx"'
-    data_frame.to_excel(response, index=False)
+    buffer = BytesIO()
+    data_frame.to_excel(buffer, index=False)
+    buffer.seek(0)
 
-    def get_error_sheet(request):
-        remove_dynamic_url(path_info)
-        return response
+    file_uuid = uuid.uuid4()
+    file_name = f"attendance/error_reports/attendance_import_errors_{file_uuid}.xlsx"
+    saved_path = default_storage.save(file_name, ContentFile(buffer.getvalue()))
+    buffer.close()
 
-    from attendance.urls import path, urlpatterns
+    try:
+        download_url = default_storage.url(saved_path)
+    except Exception:
+        media_url = getattr(settings, "MEDIA_URL", "/")
+        download_url = saved_path
+        if not download_url.startswith(("http://", "https://", "/")):
+            download_url = urljoin(media_url, download_url)
 
-    # Create a unique path for the error file download
-    path_info = f"error-sheet-{uuid.uuid4()}"
-    urlpatterns.append(path(path_info, get_error_sheet, name=path_info))
-    DYNAMIC_URL_PATTERNS.append(path_info)
-    path_info = f"attendance/{path_info}"
-    return path_info
+    return download_url

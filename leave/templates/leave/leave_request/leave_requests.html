@@ -87,6 +87,11 @@
                         hx-get="{% url 'request-filter' %}?{{pd}}&sortby=end_date" hx-target="#leaveRequest">
                         {% trans "End Date" %}
                     </div>
+                    <div class="oh-sticky-table__th {% if request.sort_option.order == '-created_at' %}arrow-up {% elif request.sort_option.order == 'created_at' %}arrow-down {% else %}arrow-up-down {% endif %}"
+                        hx-get="{% url 'request-filter' %}?{{pd}}&sortby=created_at" hx-target="#leaveRequest">
+                        {% trans "Applied On" %}
+                    </div>
+
                     <div class="oh-sticky-table__th {% if request.sort_option.order == '-requested_days' %}arrow-up {% elif request.sort_option.order == 'requested_days' %}arrow-down {% else %}arrow-up-down {% endif %}"
                         hx-get="{% url 'request-filter' %}?{{pd}}&sortby=requested_days" hx-target="#leaveRequest">
                         {% trans "Requested Days" %}
@@ -149,6 +154,7 @@
                         <div class="oh-sticky-table__td">{{leave_request.leave_type_id}}</div>
                         <div class="oh-sticky-table__td dateformat_changer">{{leave_request.start_date}}</div>
                         <div class="oh-sticky-table__td dateformat_changer">{{leave_request.end_date}}</div>
+                        <div class="oh-sticky-table__td">{{ leave_request.created_at|date:"d-m-Y h:i A" }}</div>
                         <div class="oh-sticky-table__td">{{leave_request.requested_days}}</div>
                         <div class="oh-sticky-table__td" onclick="event.stopPropagation()">
                             <div class="d-flex" style="justify-content:center;" data-target="#clashViewModal"

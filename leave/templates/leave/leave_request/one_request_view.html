@@ -84,8 +84,8 @@
         </div>
         <div class="oh-timeoff-modal__stats-container mt-3">
             <div class="oh-timeoff-modal__stat">
-                <span class="oh-timeoff-modal__stat-title">{% trans "Created Date" %}</span>
-                <span class="oh-timeoff-modal__stat-count dateformat_changer">{{leave_request.requested_date}}</span>
+                <span class="oh-timeoff-modal__stat-title">{% trans "Applied On" %}</span>
+                <span class="oh-timeoff-modal__stat-count">{{ leave_request.created_at|date:"d-m-Y h:i A" }}</span>
             </div>
             <div class="oh-timeoff-modal__stat">
                 <span class="oh-timeoff-modal__stat-title">{% trans "Created By" %}</span>

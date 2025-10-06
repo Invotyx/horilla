@@ -1,5 +1,6 @@
 from django.contrib.auth.models import Group
 from django.urls import path, re_path
+from django.views.generic import RedirectView
 from django.utils.translation import gettext_lazy as _
 
 from base import announcement, request_and_approve, views
@@ -79,6 +80,7 @@ urlpatterns = [
         name="initialize-job-position-delete",
     ),
     path("404", views.custom404, name="404"),
+    path("login", RedirectView.as_view(pattern_name="login", query_string=True)),
     path("login/", views.login_user, name="login"),
     path(
         "forgot-password",

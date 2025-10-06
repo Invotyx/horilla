@@ -460,19 +460,41 @@ function handleDownloadAndRefresh(event, url) {
     // Use in import_popup.html file
     event.preventDefault();
 
-    // Create a temporary hidden iframe to trigger the download
+    const sanitizedUrl = typeof url === "string" && url.length > 0 ? url : null;
+    if (!sanitizedUrl) {
+        window.location.reload();
+        return;
+    }
+
+    let downloadUrl = sanitizedUrl;
+    if (
+        !downloadUrl.startsWith("http://") &&
+        !downloadUrl.startsWith("https://") &&
+        !downloadUrl.startsWith("//") &&
+        !downloadUrl.startsWith("/")
+    ) {
+        downloadUrl = `/${downloadUrl}`;
+    }
+
     const iframe = document.createElement("iframe");
     iframe.style.display = "none";
-    iframe.src = url;
     document.body.appendChild(iframe);
 
-    // Refresh the page after a short delay
-    setTimeout(function () {
-        document.body.removeChild(iframe); // Clean up the iframe
-        window.location.reload(); // Refresh the page
-    }, 500); // Adjust the delay as needed
-}
+    const cleanup = () => {
+        if (document.body.contains(iframe)) {
+            document.body.removeChild(iframe);
+        }
+        window.location.reload();
+    };
 
+    iframe.addEventListener("load", () => {
+        setTimeout(cleanup, 300);
+    });
+
+    iframe.src = downloadUrl;
+
+    setTimeout(cleanup, 10000);
+}
 function toggleCommentButton(e) {
     const $button = $(e).closest("form").find("#commentButton");
     $button.toggle($(e).val().trim() !== "");

@@ -31,6 +31,11 @@ SUBMENUS = [
     },
     {
         "menu": _("Hour Account"),
+        "redirect": reverse("daily-hour-account"),
+        "accessibility": "attendance.sidebar.hour_account_accessibility",
+    },
+    {
+        "menu": _("Overtime Accounts"),
         "redirect": reverse("attendance-overtime-view"),
         "accessibility": "attendance.sidebar.hour_account_accessibility",
     },
@@ -66,9 +71,11 @@ def attendances_accessibility(request, submenu, user_perms, *args, **kwargs):
 
 def hour_account_accessibility(request, submenu, user_perms, *args, **kwargs):
     """
-    Modify the submenu redirect URL to include the current year as a query parameter.
+    Keep hour account links accessible and append year only for overtime view.
     """
-    submenu["redirect"] = submenu["redirect"] + f"?year={datetime.now().year}"
+    overtime_url = reverse("attendance-overtime-view")
+    if submenu.get("redirect") == overtime_url:
+        submenu["redirect"] = f"{overtime_url}?year={datetime.now().year}"
     return True
 
 

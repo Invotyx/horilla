@@ -47,6 +47,15 @@ def validate_time_format(value):
         raise ValidationError(_("Invalid format")) from error
 
 
+def seconds_to_duration(total_seconds: int) -> str:
+    """Return duration string (HH:MM) for the provided seconds."""
+
+    total_seconds = max(int(total_seconds or 0), 0)
+    hours, remainder = divmod(total_seconds, 3600)
+    minutes = remainder // 60
+    return f"{hours:02d}:{minutes:02d}"
+
+
 class Project(HorillaModel):
     PROJECT_STATUS = [
         ("new", "New"),
@@ -631,3 +640,87 @@ class TimeSheet(HorillaModel):
     class Meta:
         verbose_name = _("Time Sheet")
         verbose_name_plural = _("Time Sheets")
+
+
+class TaskTimeLog(HorillaModel):
+    """Track daily task based time logging for employees."""
+
+    employee = models.ForeignKey(
+        Employee,
+        on_delete=models.CASCADE,
+        related_name="task_time_logs",
+        verbose_name=_("Employee"),
+    )
+    project = models.ForeignKey(
+        Project,
+        on_delete=models.CASCADE,
+        related_name="task_time_logs",
+        verbose_name=_("Project"),
+    )
+    task_name = models.CharField(max_length=255, verbose_name=_("Task"))
+    date = models.DateField(default=timezone.localdate, verbose_name=_("Date"))
+    total_seconds = models.PositiveIntegerField(default=0, verbose_name=_("Seconds"))
+    started_at = models.DateTimeField(null=True, blank=True, verbose_name=_("Started At"))
+    active = models.BooleanField(default=False, verbose_name=_("Is Active"))
+    timesheet = models.ForeignKey(
+        TimeSheet,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="task_time_logs",
+        verbose_name=_("Timesheet"),
+    )
+
+    objects = HorillaCompanyManager("project__company_id")
+
+    class Meta:
+        unique_together = ("employee", "project", "task_name", "date")
+        ordering = ("-date", "-id")
+        verbose_name = _("Task Time Log")
+        verbose_name_plural = _("Task Time Logs")
+
+    def __str__(self):
+        return f"{self.employee} - {self.project}: {self.task_name} ({self.date})"
+
+    def stop(self, *, now=None, mark_complete: bool = False) -> int:
+        """Stop the running timer and sync the related timesheet."""
+
+        if not self.active:
+            self.active = False
+            self.started_at = None
+            self.save(update_fields=["started_at", "active"])
+            return 0
+
+        now = now or timezone.now()
+        elapsed = 0
+        if self.started_at:
+            elapsed = max(int((now - self.started_at).total_seconds()), 0)
+        self.total_seconds = max(self.total_seconds + elapsed, 0)
+        self.active = False
+        self.started_at = None
+        self.save(update_fields=["total_seconds", "active", "started_at"])
+        self.sync_timesheet(mark_complete=mark_complete)
+        return elapsed
+
+    def sync_timesheet(self, *, mark_complete: bool = False) -> None:
+        """Persist accumulated time into the associated timesheet."""
+
+        time_spent = seconds_to_duration(self.total_seconds)
+        defaults = {
+            "time_spent": time_spent,
+            "status": "completed" if mark_complete else "in_Progress",
+            "description": "",
+        }
+        timesheet, _ = TimeSheet.objects.update_or_create(
+            employee_id=self.employee,
+            project_id=self.project,
+            task_name=self.task_name,
+            date=self.date,
+            defaults=defaults,
+        )
+        if self.timesheet_id != timesheet.id:
+            self.timesheet = timesheet
+            self.save(update_fields=["timesheet"])
+
+    def get_duration_display(self) -> str:
+        return seconds_to_duration(self.total_seconds)

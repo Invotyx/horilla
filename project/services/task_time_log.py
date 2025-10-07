@@ -27,6 +27,34 @@ def _today():
     return timezone.localdate()
 
 
+def _compute_running_seconds(log: TaskTimeLog, now) -> int:
+    seconds = log.total_seconds
+    if log.active and log.started_at:
+        seconds += max(int((now - log.started_at).total_seconds()), 0)
+    return max(seconds, 0)
+
+
+def serialize_log(log: Optional[TaskTimeLog], *, project_name: Optional[str] = None, now=None):
+    if not log:
+        return None
+    now = now or timezone.now()
+    running_seconds = _compute_running_seconds(log, now)
+    project_title = project_name or (log.project.title if log.project_id else "")
+    label = (
+        f"{project_title}: {log.task_name}"
+        if project_title
+        else log.task_name
+    )
+    return {
+        "project_id": log.project_id,
+        "task_name": log.task_name,
+        "label": label,
+        "time_display": seconds_to_duration(running_seconds),
+        "elapsed_seconds": running_seconds,
+        "active": bool(log.active),
+    }
+
+
 def _collect_today_timesheets(employee) -> Dict[Tuple[int, str], TimeSheet]:
     """Return a mapping of (project_id, task_name) to today's timesheet entry."""
 
@@ -95,9 +123,7 @@ def get_employee_task_options(employee) -> Dict[str, object]:
         log = log_map.get((project_id, task_name))
         seconds = 0
         if log:
-            seconds = log.total_seconds
-            if log.active and log.started_at:
-                seconds += max(int((now - log.started_at).total_seconds()), 0)
+            seconds = _compute_running_seconds(log, now)
         else:
             sheet = today_timesheets.get((project_id, task_name))
             if sheet:
@@ -109,6 +135,7 @@ def get_employee_task_options(employee) -> Dict[str, object]:
             "label": f"{project_name}: {task_name}",
             "active": bool(log and log.active),
             "time_display": seconds_to_duration(seconds),
+            "elapsed_seconds": seconds,
         }
         group["tasks"].append(task_info)
 
@@ -117,15 +144,9 @@ def get_employee_task_options(employee) -> Dict[str, object]:
         active_project_name = combos.get(
             (active_log.project_id, active_log.task_name), active_log.project.title
         )
-        active_seconds = active_log.total_seconds
-        if active_log.started_at:
-            active_seconds += max(int((now - active_log.started_at).total_seconds()), 0)
-        active_payload = {
-            "project_id": active_log.project_id,
-            "task_name": active_log.task_name,
-            "label": f"{active_project_name}: {active_log.task_name}",
-            "time_display": seconds_to_duration(active_seconds),
-        }
+        active_payload = serialize_log(
+            active_log, project_name=active_project_name, now=now
+        )
 
     return {
         "projects": list(grouped.values()),

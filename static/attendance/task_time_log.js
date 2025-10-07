@@ -5,6 +5,17 @@
   const CHECK_OUT_PATH = "/attendance/clock-out";
   const CHECK_IN_PATH = "/attendance/clock-in";
 
+  function formatSeconds(value) {
+    const total = Math.max(parseInt(value, 10) || 0, 0);
+    const hours = Math.floor(total / 3600)
+      .toString()
+      .padStart(2, "0");
+    const minutes = Math.floor((total % 3600) / 60)
+      .toString()
+      .padStart(2, "0");
+    return `${hours}:${minutes}`;
+  }
+
   function getCsrfToken() {
     const match = document.cookie.match(/csrftoken=([^;]+)/);
     return match ? decodeURIComponent(match[1]) : "";
@@ -43,6 +54,9 @@
       this.hasTasks = false;
       this.loading = false;
       this.pendingRefresh = false;
+      this.tickerInterval = null;
+      this.activeBaseSeconds = 0;
+      this.activeClientStart = null;
 
       this.boundToggleClick = this.handleToggleClick.bind(this);
       this.boundDocumentClick = this.handleDocumentClick.bind(this);
@@ -68,6 +82,7 @@
         this.menu.removeEventListener("click", this.boundMenuClick);
       }
       document.removeEventListener("click", this.boundDocumentClick);
+      this.stopTicker();
       this.closeMenu();
     }
 
@@ -165,10 +180,15 @@
           const item = document.createElement("button");
           item.type = "button";
           item.className = "attendance-task-dropdown__item";
-          item.setAttribute("data-project-id", task.project_id);
-          item.setAttribute("data-task-name", task.task_name);
+          item.dataset.projectId = String(task.project_id);
+          item.dataset.taskName = String(task.task_name);
           if (task.active) {
             item.classList.add("is-active");
+          }
+          if (typeof task.elapsed_seconds === "number") {
+            item.dataset.elapsedSeconds = String(task.elapsed_seconds);
+          } else {
+            delete item.dataset.elapsedSeconds;
           }
 
           const indicator = document.createElement("span");
@@ -181,7 +201,12 @@
 
           const time = document.createElement("span");
           time.className = "attendance-task-dropdown__time";
-          time.textContent = task.time_display || "00:00";
+          const formatted =
+            task.time_display ||
+            (typeof task.elapsed_seconds === "number"
+              ? formatSeconds(task.elapsed_seconds)
+              : "00:00");
+          time.textContent = formatted;
           item.appendChild(time);
 
           this.menu.appendChild(item);
@@ -189,25 +214,40 @@
       });
 
       this.updateToggleAvailability();
+      this.updateActiveMenuTime(
+        this.activeTask ? this.activeTask.elapsed_seconds : null
+      );
     }
 
     setActiveLabel(active) {
-      this.activeTask = active || null;
-      if (!this.label) {
-        return;
-      }
+      this.stopTicker();
+      this.activeTask = active ? { ...active } : null;
       if (this.activeTask) {
-        this.label.textContent = this.activeTask.label || this.defaultLabel;
-        if (this.selectedTime) {
-          this.selectedTime.textContent = this.activeTask.time_display
-            ? this.activeTask.time_display
-            : "";
+        if (this.label) {
+          this.label.textContent = this.activeTask.label || this.defaultLabel;
         }
+        this.activeBaseSeconds = Number(
+          this.activeTask.elapsed_seconds || 0
+        );
+        this.activeClientStart = Date.now();
+        if (this.selectedTime) {
+          const display =
+            this.activeTask.time_display ||
+            formatSeconds(this.activeBaseSeconds || 0);
+          this.selectedTime.textContent = display;
+        }
+        this.updateActiveMenuTime(this.activeBaseSeconds);
+        this.startTicker();
       } else {
-        this.label.textContent = this.defaultLabel;
+        if (this.label) {
+          this.label.textContent = this.defaultLabel;
+        }
         if (this.selectedTime) {
           this.selectedTime.textContent = "";
         }
+        this.activeBaseSeconds = 0;
+        this.activeClientStart = null;
+        this.updateActiveMenuTime(null);
       }
     }
 
@@ -339,6 +379,76 @@
       }
       this.error.textContent = "";
       this.error.classList.add("d-none");
+    }
+
+    startTicker() {
+      if (!this.activeTask) {
+        return;
+      }
+      this.updateTickerDisplay();
+      if (this.activeTask.active) {
+        this.tickerInterval = window.setInterval(() => {
+          this.updateTickerDisplay();
+        }, 1000);
+      }
+    }
+
+    stopTicker() {
+      if (this.tickerInterval) {
+        window.clearInterval(this.tickerInterval);
+        this.tickerInterval = null;
+      }
+    }
+
+    updateTickerDisplay() {
+      if (!this.activeTask) {
+        return;
+      }
+      const base = Number(this.activeBaseSeconds || 0);
+      let seconds = base;
+      if (this.activeTask.active && this.activeClientStart) {
+        const diff = Math.max(
+          Math.floor((Date.now() - this.activeClientStart) / 1000),
+          0
+        );
+        seconds = base + diff;
+      }
+      const formatted = formatSeconds(seconds);
+      this.activeTask.elapsed_seconds = seconds;
+      this.activeTask.time_display = formatted;
+      if (this.selectedTime) {
+        this.selectedTime.textContent = formatted;
+      }
+      this.updateActiveMenuTime(seconds);
+    }
+
+    updateActiveMenuTime(seconds) {
+      if (!this.menu) {
+        return;
+      }
+      const formatted =
+        typeof seconds === "number" ? formatSeconds(seconds) : null;
+      const items = this.menu.querySelectorAll(
+        ".attendance-task-dropdown__item"
+      );
+      items.forEach((item) => {
+        const matches =
+          this.activeTask &&
+          item.dataset.projectId === String(this.activeTask.project_id) &&
+          item.dataset.taskName === String(this.activeTask.task_name);
+        if (matches) {
+          item.classList.add("is-active");
+          if (formatted !== null) {
+            item.dataset.elapsedSeconds = String(seconds);
+            const time = item.querySelector(".attendance-task-dropdown__time");
+            if (time) {
+              time.textContent = formatted;
+            }
+          }
+        } else {
+          item.classList.remove("is-active");
+        }
+      });
     }
   }
 

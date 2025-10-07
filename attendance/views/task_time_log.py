@@ -18,15 +18,7 @@ def _get_employee(request):
 
 
 def _serialize_log(log):
-    if not log:
-        return None
-    project_name = log.project.title if log.project_id else ""
-    return {
-        "project_id": log.project_id,
-        "task_name": log.task_name,
-        "label": f"{project_name}: {log.task_name}" if project_name else log.task_name,
-        "time_display": log.get_duration_display(),
-    }
+    return service.serialize_log(log)
 
 
 @login_required

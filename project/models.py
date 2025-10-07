@@ -566,6 +566,7 @@ class TimeSheet(HorillaModel):
         verbose_name=_("Status"),
     )
     description = models.TextField(blank=True, null=True, verbose_name=_("Description"))
+    auto_logged = models.BooleanField(default=False, verbose_name=_("Auto Logged"))
     objects = HorillaCompanyManager("project_id__company_id")
 
     class Meta:
@@ -574,7 +575,7 @@ class TimeSheet(HorillaModel):
     def clean(self):
         if self.project_id is None:
             raise ValidationError({"project_id": "Project name is Required."})
-        if self.description is None or self.description == "":
+        if not self.auto_logged and (self.description is None or self.description == ""):
             raise ValidationError(
                 {"description": "Please provide a description to your Time sheet"}
             )
@@ -716,8 +717,18 @@ class TaskTimeLog(HorillaModel):
             project_id=self.project,
             task_name=self.task_name,
             date=self.date,
+            auto_logged=True,
             defaults=defaults,
         )
+        updates = []
+        if not timesheet.auto_logged:
+            timesheet.auto_logged = True
+            updates.append("auto_logged")
+        if timesheet.description:
+            timesheet.description = ""
+            updates.append("description")
+        if updates:
+            timesheet.save(update_fields=updates)
         if self.timesheet_id != timesheet.id:
             self.timesheet = timesheet
             self.save(update_fields=["timesheet"])

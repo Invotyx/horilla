@@ -1,36 +1,179 @@
-{% load horillafilters attendancefilters i18n %}
+{% load horillafilters attendancefilters i18n static %}
 {% if request.user.employee_get %}
     {% with get_forecasted_at_work=request.user.employee_get.get_forecasted_at_work %}
         {% if request.session.selected_company == "all" or request.user.employee_get.employee_work_info.company_id.id == request.session.selected_company|default:"-1"|add:"0" %}
-            <!-- "CHEKING WETHER Check in/check out enabled" -->
             {% if request|is_check_in_enabled %}
-                <!-- "CHEKING WETHER ITS IS THE CURRENT EMPLOYEES COMPANY OR ALL COMPANY, THEN ONLY SHOWS THE CHECK-IN, CHECK-OUT BUTTON" -->
-                {% if request.user|is_clocked_in and get_forecasted_at_work.has_attendance %}
-                    <button class="oh-btn oh-btn--warning-outline mr-2" {% if enabled_timerunner and get_forecasted_at_work.has_attendance %} onmouseenter="$(this).find('span').show();$(this).find('.time-runner').hide();" onmouseleave="$(this).find('span').hide();$(this).find('.time-runner').show();" {% endif %} hx-get="{% url 'clock-out' %}"  hx-target='#attendance-activity-container' hx-swap='innerHTML'><ion-icon class="oh-navbar__clock-icon mr-2 text-warning" name="exit-outline"></ion-icon>
-                        <span class="hr-Check-In-out-text" {% if enabled_timerunner and get_forecasted_at_work.has_attendance %} style="display: none;" {% endif %}>{% trans "Check-Out" %}</span>
-                        {% if get_forecasted_at_work.has_attendance %}
-                        <div class="time-runner"></div>
-                        {% endif %}
-                    </button>
-                    <script>
-                        run = 1
-                    </script>
-                {% else %}
-                    <button {% if enabled_timerunner %} onmouseenter="$(this).find('span').show();$(this).find('.at-work-seconds').hide();" onmouseleave="$(this).find('span').hide();$(this).find('.at-work-seconds').show();" {% endif %}
-                        class="oh-btn oh-btn--success-outline mr-2" hx-get="{% url 'clock-in' %}"  hx-target='#attendance-activity-container' hx-swap='innerHTML'
+                <div
+                    id="attendance-task-logger"
+                    class="attendance-task-wrapper d-flex align-items-center flex-wrap{% if not request.user|is_clocked_in %} attendance-task-dropdown--disabled{% endif %}"
+                    data-options-url="{% url 'task-time-log-options' %}"
+                    data-toggle-url="{% url 'task-time-log-toggle' %}"
+                    data-stop-url="{% url 'task-time-log-stop' %}"
+                    data-clocked-in="{% if request.user|is_clocked_in %}1{% else %}0{% endif %}"
+                >
+                    <div class="attendance-task-dropdown" data-role="task-dropdown">
+                        <button
+                            type="button"
+                            class="oh-btn oh-btn--light attendance-task-dropdown__toggle"
+                            data-role="task-toggle"
+                            aria-haspopup="true"
+                            aria-expanded="false"
+                            disabled
                         >
-                            <ion-icon class="oh-navbar__clock-icon mr-2 text-success" name="enter-outline"></ion-icon>
-                        <span class="hr-Check-In-out-text" {% if enabled_timerunner %} style="display: none;" {% endif %}>{% trans "Check-In" %}</span>
-                        <div class="at-work-seconds"></div>
-                    </button>
-                    {% if enabled_timerunner %}
-                        <script>
-                            $(document).ready(function () {
-                            $('.at-work-seconds').html(secondsToDuration({{get_forecasted_at_work.forecasted_at_work_seconds}}))
-                            });
-                            run = 0
-                        </script>
-                    {% endif %}
+                            <span data-role="task-label">{% trans "Select Task" %}</span>
+                            <span data-role="task-time" class="attendance-task-dropdown__selected-time"></span>
+                            <ion-icon name="chevron-down-outline" class="attendance-task-dropdown__icon"></ion-icon>
+                        </button>
+                        <div class="attendance-task-dropdown__menu" data-role="task-menu" aria-label="{% trans 'Timesheet Tasks' %}" data-empty-label="{% trans 'No tasks available' %}">
+                            <div class="attendance-task-dropdown__empty text-muted px-3 py-2">{% trans "No tasks available" %}</div>
+                        </div>
+                    </div>
+                    <div id="check-in-out-button" class="attendance-task-wrapper__button">
+                        {% if request.user|is_clocked_in and get_forecasted_at_work.has_attendance %}
+                            <button
+                                class="oh-btn oh-btn--warning-outline mr-2"
+                                {% if enabled_timerunner and get_forecasted_at_work.has_attendance %}
+                                    onmouseenter="$(this).find('span').show();$(this).find('.time-runner').hide();"
+                                    onmouseleave="$(this).find('span').hide();$(this).find('.time-runner').show();"
+                                {% endif %}
+                                hx-get="{% url 'clock-out' %}"
+                                hx-target="#check-in-out-button"
+                                hx-swap="innerHTML"
+                            >
+                                <ion-icon class="oh-navbar__clock-icon mr-2 text-warning" name="exit-outline"></ion-icon>
+                                <span class="hr-Check-In-out-text" {% if enabled_timerunner and get_forecasted_at_work.has_attendance %}style="display: none;"{% endif %}>{% trans "Check-Out" %}</span>
+                                {% if get_forecasted_at_work.has_attendance %}
+                                    <div class="time-runner"></div>
+                                {% endif %}
+                            </button>
+                            <script>
+                                run = 1
+                            </script>
+                        {% else %}
+                            <button
+                                class="oh-btn oh-btn--success-outline mr-2"
+                                {% if enabled_timerunner %}
+                                    onmouseenter="$(this).find('span').show();$(this).find('.at-work-seconds').hide();"
+                                    onmouseleave="$(this).find('span').hide();$(this).find('.at-work-seconds').show();"
+                                {% endif %}
+                                hx-get="{% url 'clock-in' %}"
+                                hx-target="#check-in-out-button"
+                                hx-swap="innerHTML"
+                            >
+                                <ion-icon class="oh-navbar__clock-icon mr-2 text-success" name="enter-outline"></ion-icon>
+                                <span class="hr-Check-In-out-text" {% if enabled_timerunner %}style="display: none;"{% endif %}>{% trans "Check-In" %}</span>
+                                <div class="at-work-seconds"></div>
+                            </button>
+                            {% if enabled_timerunner %}
+                                <script>
+                                    $(document).ready(function () {
+                                        $(".at-work-seconds").html(secondsToDuration({{ get_forecasted_at_work.forecasted_at_work_seconds }}));
+                                    });
+                                    run = 0;
+                                </script>
+                            {% endif %}
+                        {% endif %}
+                    </div>
+                    <small class="attendance-task-dropdown__error text-danger d-none" data-role="task-error"></small>
+                </div>
+                {% if not request.htmx %}
+                    <style>
+                        .attendance-task-wrapper {
+                            gap: 0.75rem;
+                        }
+
+                        .attendance-task-dropdown {
+                            position: relative;
+                            min-width: 220px;
+                        }
+
+                        .attendance-task-dropdown__toggle {
+                            display: flex;
+                            align-items: center;
+                            justify-content: space-between;
+                            gap: 0.5rem;
+                            min-width: 220px;
+                        }
+
+                        .attendance-task-dropdown__menu {
+                            display: none;
+                            position: absolute;
+                            top: calc(100% + 0.25rem);
+                            left: 0;
+                            z-index: 1050;
+                            min-width: 100%;
+                            background-color: #ffffff;
+                            border: 1px solid rgba(0, 0, 0, 0.1);
+                            border-radius: 0.5rem;
+                            box-shadow: 0 0.75rem 1.5rem rgba(18, 38, 63, 0.2);
+                            padding: 0.25rem 0;
+                            max-height: 280px;
+                            overflow-y: auto;
+                        }
+
+                        .attendance-task-dropdown__menu.show {
+                            display: block;
+                        }
+
+                        .attendance-task-dropdown__item {
+                            display: flex;
+                            align-items: center;
+                            width: 100%;
+                            padding: 0.5rem 1rem;
+                            border: 0;
+                            background: transparent;
+                            text-align: left;
+                            font-size: 0.875rem;
+                            color: inherit;
+                        }
+
+                        .attendance-task-dropdown__item:hover,
+                        .attendance-task-dropdown__item:focus {
+                            background-color: rgba(0, 0, 0, 0.04);
+                            outline: none;
+                        }
+
+                        .attendance-task-dropdown__indicator {
+                            width: 0.65rem;
+                            height: 0.65rem;
+                            border-radius: 50%;
+                            border: 1px solid rgba(0, 0, 0, 0.15);
+                            margin-right: 0.5rem;
+                            flex-shrink: 0;
+                            background-color: transparent;
+                        }
+
+                        .attendance-task-dropdown__item.is-active .attendance-task-dropdown__indicator {
+                            background-color: #28a745;
+                            border-color: #28a745;
+                        }
+
+                        .attendance-task-dropdown__time {
+                            margin-left: auto;
+                            font-size: 0.75rem;
+                            color: rgba(0, 0, 0, 0.55);
+                        }
+
+                        .attendance-task-dropdown__selected-time {
+                            margin-left: auto;
+                            font-size: 0.75rem;
+                            color: rgba(0, 0, 0, 0.55);
+                        }
+
+                        .attendance-task-dropdown--disabled .attendance-task-dropdown__toggle {
+                            opacity: 0.65;
+                            cursor: not-allowed;
+                        }
+
+                        .attendance-task-dropdown__group-title {
+                            font-size: 0.75rem;
+                            font-weight: 600;
+                            color: rgba(0, 0, 0, 0.45);
+                            padding: 0.4rem 1rem 0.2rem;
+                            text-transform: uppercase;
+                        }
+                    </style>
+                    <script defer src="{% static 'attendance/task_time_log.js' %}"></script>
                 {% endif %}
             {% endif %}
         {% endif %}

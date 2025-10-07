@@ -324,7 +324,7 @@ def clock_in(request):
                 {mouse_in}
                 {mouse_out}
                     hx-get="/attendance/clock-out"
-                        hx-target='#attendance-activity-container'
+                        hx-target='#check-in-out-button'
                         hx-swap='innerHTML'><ion-icon class="oh-navbar__clock-icon mr-2
                         text-warning"
                             name="exit-outline"></ion-icon>
@@ -582,7 +582,7 @@ def clock_out(request):
                 {mouse_in}
                 {mouse_out}
                 hx-get="/attendance/clock-in"
-                hx-target='#attendance-activity-container'
+                hx-target='#check-in-out-button'
                 hx-swap='innerHTML'>
                 <ion-icon class="oh-navbar__clock-icon mr-2 text-success"
                 name="enter-outline"></ion-icon>

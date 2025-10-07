@@ -13,6 +13,7 @@ import attendance.views.geofaceconfig
 import attendance.views.penalty
 import attendance.views.requests
 import attendance.views.search
+import attendance.views.task_time_log
 import base
 from base.forms import AttendanceAllowedIPForm
 from base.models import AttendanceAllowedIP
@@ -143,6 +144,21 @@ urlpatterns = [
     ),
     path("clock-in", attendance.views.clock_in_out.clock_in, name="clock-in"),
     path("clock-out", attendance.views.clock_in_out.clock_out, name="clock-out"),
+    path(
+        "task-time-log/options/",
+        attendance.views.task_time_log.task_time_log_options,
+        name="task-time-log-options",
+    ),
+    path(
+        "task-time-log/toggle/",
+        attendance.views.task_time_log.task_time_log_toggle,
+        name="task-time-log-toggle",
+    ),
+    path(
+        "task-time-log/stop/",
+        attendance.views.task_time_log.task_time_log_stop,
+        name="task-time-log-stop",
+    ),
     path(
         "on-time-view/",
         views.on_time_view,

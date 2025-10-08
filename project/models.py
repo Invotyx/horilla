@@ -707,28 +707,44 @@ class TaskTimeLog(HorillaModel):
         """Persist accumulated time into the associated timesheet."""
 
         time_spent = seconds_to_duration(self.total_seconds)
-        defaults = {
-            "time_spent": time_spent,
-            "status": "completed" if mark_complete else "in_Progress",
-            "description": "",
+        desired_status = "completed" if mark_complete else "in_Progress"
+        filters = {
+            "employee_id": self.employee,
+            "project_id": self.project,
+            "task_name": self.task_name,
+            "date": self.date,
         }
-        timesheet, _ = TimeSheet.objects.update_or_create(
-            employee_id=self.employee,
-            project_id=self.project,
-            task_name=self.task_name,
-            date=self.date,
-            auto_logged=True,
-            defaults=defaults,
+
+        timesheet = (
+            TimeSheet.objects.filter(**filters)
+            .order_by("-auto_logged", "id")
+            .first()
         )
+
         updates = []
-        if not timesheet.auto_logged:
-            timesheet.auto_logged = True
-            updates.append("auto_logged")
-        if timesheet.description:
-            timesheet.description = ""
-            updates.append("description")
-        if updates:
-            timesheet.save(update_fields=updates)
+        if timesheet:
+            if timesheet.time_spent != time_spent:
+                timesheet.time_spent = time_spent
+                updates.append("time_spent")
+            if timesheet.status != desired_status:
+                timesheet.status = desired_status
+                updates.append("status")
+            if timesheet.description:
+                timesheet.description = ""
+                updates.append("description")
+            if not timesheet.auto_logged:
+                timesheet.auto_logged = True
+                updates.append("auto_logged")
+            if updates:
+                timesheet.save(update_fields=updates)
+        else:
+            timesheet = TimeSheet.objects.create(
+                auto_logged=True,
+                description="",
+                status=desired_status,
+                time_spent=time_spent,
+                **filters,
+            )
         if self.timesheet_id != timesheet.id:
             self.timesheet = timesheet
             self.save(update_fields=["timesheet"])

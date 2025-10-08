@@ -13,7 +13,8 @@
     const minutes = Math.floor((total % 3600) / 60)
       .toString()
       .padStart(2, "0");
-    return `${hours}:${minutes}`;
+    const seconds = (total % 60).toString().padStart(2, "0");
+    return `${hours}:${minutes}:${seconds}`;
   }
 
   function getCsrfToken() {
@@ -202,10 +203,9 @@
           const time = document.createElement("span");
           time.className = "attendance-task-dropdown__time";
           const formatted =
-            task.time_display ||
-            (typeof task.elapsed_seconds === "number"
+            typeof task.elapsed_seconds === "number"
               ? formatSeconds(task.elapsed_seconds)
-              : "00:00");
+              : task.time_display || "00:00:00";
           time.textContent = formatted;
           item.appendChild(time);
 
@@ -231,10 +231,9 @@
         );
         this.activeClientStart = Date.now();
         if (this.selectedTime) {
-          const display =
-            this.activeTask.time_display ||
-            formatSeconds(this.activeBaseSeconds || 0);
-          this.selectedTime.textContent = display;
+          this.selectedTime.textContent = formatSeconds(
+            this.activeBaseSeconds || 0
+          );
         }
         this.updateActiveMenuTime(this.activeBaseSeconds);
         this.startTicker();

@@ -144,6 +144,40 @@ def calculate_prorated_medical_allowance(employee, fiscal_start, fiscal_end):
         prorated = Decimal("0")
     return prorated
 
+from datetime import date
+from decimal import Decimal
+
+def calculate_prorated_medical_allowance_upto_current_month(employee, fiscal_start, fiscal_end):
+    """Compute the prorated medical allowance from joining month up to the current month."""
+    join_date = get_employee_join_date(employee)
+    if not join_date:
+        return MEDICAL_ANNUAL_ALLOWANCE  # default full allowance if join date missing
+
+    today = date.today()
+
+    # If joined after fiscal end or after current month, no allowance
+    if join_date > today or join_date >= fiscal_end:
+        return Decimal("0")
+
+    # Determine range for calculation
+    join_month_start = join_date.replace(day=1)
+    current_month_start = today.replace(day=1)
+
+    # Ensure the range is within the fiscal year
+    start = max(join_month_start, fiscal_start)
+    end = min(current_month_start, fiscal_end)
+
+    months_eligible = _months_between(start, end) + 1  # include the current month
+
+    # Keep it within valid range
+    if months_eligible < 0:
+        months_eligible = 0
+    elif months_eligible > FISCAL_YEAR_MONTHS:
+        months_eligible = FISCAL_YEAR_MONTHS
+
+    prorated = MEDICAL_MONTHLY_ALLOWANCE * months_eligible
+    return prorated
+
 
 def decimal_or_zero(value):
     """Safely convert a numeric value to Decimal."""
@@ -1661,7 +1695,10 @@ def view_reimbursement(request):
         prorated_allowance = calculate_prorated_medical_allowance(
             emp, fiscal_start, fiscal_end
         )
-        available_allowance = prorated_allowance - approved_total
+        available_allowance =  calculate_prorated_medical_allowance_upto_current_month(
+            emp, fiscal_start, fiscal_end
+        ) - approved_total
+        
         if available_allowance < 0:
             available_allowance = Decimal("0")
 
@@ -1782,7 +1819,11 @@ def search_reimbursement(request):
         prorated_allowance = calculate_prorated_medical_allowance(
             emp, fiscal_start, fiscal_end
         )
-        available_allowance = prorated_allowance - approved_total
+        
+        available_allowance =  calculate_prorated_medical_allowance_upto_current_month(
+            emp, fiscal_start, fiscal_end
+        ) - approved_total
+                
         if available_allowance < 0:
             available_allowance = Decimal("0")
 
@@ -1874,7 +1915,8 @@ def medical_tab(request, emp_id):
         .aggregate(total=Sum("amount"))
         .get("total")
     )
-    available_allowance = prorated_allowance - availed
+    available_allowance = calculate_prorated_medical_allowance_upto_current_month(employee, fiscal_start, fiscal_end) - availed
+    
     if available_allowance < 0:
         available_allowance = Decimal("0")
 

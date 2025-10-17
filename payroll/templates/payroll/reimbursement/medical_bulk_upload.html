@@ -1,0 +1,94 @@
+{% load i18n %}
+<div class="oh-modal__dialog-header">
+    <button type="button" class="oh-modal__close" aria-label="{% trans 'Close' %}">
+        <ion-icon name="close-outline"></ion-icon>
+    </button>
+    <h2 class="oh-modal__title mb-0">{% trans "Bulk Upload Medical Claims" %}</h2>
+</div>
+<div class="oh-modal__dialog-body">
+    <form
+        hx-post="{% url 'medical-reimbursement-bulk-upload' %}"
+        hx-target="#objectCreateModalTarget"
+        hx-encoding="multipart/form-data"
+        class="d-flex flex-column gap-3"
+    >
+        <div class="oh-card">
+            <div class="oh-card__body">
+                <p class="mb-2">
+                    {% trans "Download the template, fill one row per medical claim, and upload it here. Use the Employee ID (badge/HR code) to identify each employee." %}
+                </p>
+                <a
+                    class="oh-btn oh-btn--secondary oh-btn--small"
+                    href="{% url 'medical-reimbursement-template' %}"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                >
+                    {% trans "Download Sample Template" %}
+                </a>
+                <details class="mt-3">
+                    <summary class="fw-semibold">{% trans "Required columns" %}</summary>
+                    <div class="mt-2 small text-muted">
+                        {% for column in columns %}
+                            <span class="badge bg-light text-dark border mb-1">{{ column }}</span>
+                        {% endfor %}
+                    </div>
+                </details>
+            </div>
+        </div>
+
+        <div class="oh-card">
+            <div class="oh-card__body">
+                <label class="oh-label required-star" for="id_bulk_file">{% trans "Excel file" %}</label>
+                <input
+                    id="id_bulk_file"
+                    type="file"
+                    name="file"
+                    class="oh-input w-100"
+                    accept=".xlsx,.xls"
+                    required
+                />
+                <p class="oh-text--muted mt-2 mb-0 small">
+                    {% trans "Accepted formats: .xlsx or .xls. Maximum five expenses per claim. Dates should use YYYY-MM-DD format. Employee ID should match the badge or HR identifier." %}
+                </p>
+            </div>
+        </div>
+
+        {% if success_count or failure_count or skipped_blank %}
+            <div class="oh-card">
+                <div class="oh-card__body small">
+                    <strong>{% trans "Summary" %}:</strong>
+                    <ul class="mb-0">
+                        <li>{% trans "Successful rows:" %} {{ success_count|default:0 }}</li>
+                        <li>{% trans "Failed rows:" %} {{ failure_count|default:0 }}</li>
+                        <li>{% trans "Blank rows skipped:" %} {{ skipped_blank|default:0 }}</li>
+                    </ul>
+                </div>
+            </div>
+        {% endif %}
+
+        {% if errors %}
+            <div class="oh-alert oh-alert--danger">
+                <p class="mb-2 fw-semibold">{% trans "Rows that could not be imported" %}</p>
+                <div class="oh-alert__content">
+                    <ul class="mb-0 small">
+                        {% for item in errors %}
+                            <li>
+                                <strong>{% trans "Row" %} {{ item.row }}</strong>:
+                                {{ item.messages|join:", " }}
+                            </li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            </div>
+        {% endif %}
+
+        <div class="d-flex justify-content-between align-items-center mt-2">
+            <button type="button" class="oh-btn oh-btn--light" onclick="document.querySelector('#objectCreateModal .oh-modal__close')?.click();">
+                {% trans "Cancel" %}
+            </button>
+            <button type="submit" class="oh-btn oh-btn--primary">
+                {% trans "Upload" %}
+            </button>
+        </div>
+    </form>
+</div>

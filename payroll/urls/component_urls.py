@@ -140,6 +140,16 @@ urlpatterns = [
         name="search-reimbursement",
     ),
     path(
+        "medical-reimbursement-template/",
+        component_views.medical_reimbursement_template,
+        name="medical-reimbursement-template",
+    ),
+    path(
+        "medical-reimbursement-bulk-upload/",
+        component_views.medical_reimbursement_bulk_upload,
+        name="medical-reimbursement-bulk-upload",
+    ),
+    path(
         "get-assigned-leaves/",
         component_views.get_assigned_leaves,
         name="get-assigned-leaves",

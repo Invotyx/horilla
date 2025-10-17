@@ -1682,6 +1682,22 @@ class Reimbursement(HorillaModel):
 
     def save(self, *args, **kwargs) -> None:
         request = getattr(horilla_middlewares._thread_locals, "request", None)
+        skip_attachment_validation = getattr(
+            self, "_skip_attachment_validation", False
+        )
+        forced_employee = getattr(self, "_force_employee_id", None)
+        has_perm = True
+        if request and getattr(request, "user", None):
+            try:
+                has_perm = request.user.has_perm("payroll.change_reimbursement")
+            except Exception:
+                has_perm = True
+        # Preserve supplied employee when bulk importing; otherwise honour permission gate
+        if forced_employee is not None:
+            self.employee_id = forced_employee
+        elif request and getattr(request, "user", None) and not has_perm:
+            self.employee_id = request.user.employee_get
+
         amount_for_leave = (
             EncashmentGeneralSettings.objects.first().leave_amount
             if EncashmentGeneralSettings.objects.first()
@@ -1693,13 +1709,18 @@ class Reimbursement(HorillaModel):
             else 1
         )
 
-        # Setting the created use if the used dont have the permission
-        has_perm = request.user.has_perm("payroll.change_reimbursement")
-        if not has_perm:
-            self.employee_id = request.user.employee_get
-        if self.type == "reimbursement" and self.attachment is None:
+        # Enforce attachment requirement unless explicitly bypassed (bulk import)
+        if (
+            not skip_attachment_validation
+            and self.type == "reimbursement"
+            and self.attachment is None
+        ):
             raise ValidationError({"attachment": "This field is required"})
-        if self.type == "medical_encashment" and self.attachment is None:
+        if (
+            not skip_attachment_validation
+            and self.type == "medical_encashment"
+            and self.attachment is None
+        ):
             raise ValidationError({"attachment": "This field is required"})
         # Ensure total_claimed_amount is computed from medical_expenses for medical claims,
         # but do NOT override approved amount once beyond requested stage.

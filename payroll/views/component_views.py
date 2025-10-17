@@ -6,7 +6,7 @@ This module is used to write methods to the component_urls patterns respectively
 
 import json
 import operator
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from collections import defaultdict
 from datetime import date, datetime, timedelta
 from itertools import groupby
@@ -15,6 +15,7 @@ from urllib.parse import parse_qs
 import pandas as pd
 from django.apps import apps
 from django.contrib import messages
+from django.core.exceptions import ValidationError
 from django.db.models import Sum
 from django.http import HttpResponse, HttpResponseRedirect, JsonResponse, QueryDict
 from django.shortcuts import redirect, render
@@ -95,6 +96,152 @@ MEDICAL_MONTHLY_ALLOWANCE = Decimal("8333")
 FISCAL_YEAR_MONTHS = 12
 FISCAL_YEAR_START_MONTH = 7
 FISCAL_YEAR_START_DAY = 1
+MEDICAL_BULK_MAX_EXPENSES = 5
+MEDICAL_BULK_BASE_COLUMNS = [
+    "Employee ID",
+    "Claim Title",
+    "Description",
+    "Claim Date",
+    "Claim For",
+    "Dependent Name",
+]
+MEDICAL_BULK_TEMPLATE_COLUMNS = MEDICAL_BULK_BASE_COLUMNS + [
+    col
+    for idx in range(1, MEDICAL_BULK_MAX_EXPENSES + 1)
+    for col in [
+        f"Expense {idx} Type",
+        f"Expense {idx} Provider",
+        f"Expense {idx} Date",
+        f"Expense {idx} Amount",
+        f"Expense {idx} Receipt",
+    ]
+]
+MEDICAL_CLAIM_FOR_LOOKUP = {}
+for value, label in Reimbursement.CLAIM_FOR_CHOICES:
+    MEDICAL_CLAIM_FOR_LOOKUP[str(value).lower()] = value
+    if label:
+        MEDICAL_CLAIM_FOR_LOOKUP[str(label).lower()] = value
+MEDICAL_CLAIM_FOR_DISPLAY = sorted(
+    {str(label) for _, label in Reimbursement.CLAIM_FOR_CHOICES}
+)
+
+
+def user_can_bulk_upload_medical(user):
+    """Return True when the current user may access medical bulk upload actions."""
+    if not getattr(user, "is_authenticated", False):
+        return False
+    if user.is_superuser:
+        return True
+    employee = getattr(user, "employee_get", None)
+    if not employee:
+        return False
+    try:
+        work_info = employee.employee_work_info
+    except EmployeeWorkInformation.DoesNotExist:
+        return False
+    department = getattr(getattr(work_info, "department_id", None), "department", "")
+    if not department:
+        return False
+    department_name = department.strip().lower()
+    return department_name in {"hr", "human resource", "human resources"}
+
+
+def _is_cell_empty(value):
+    """Return True when a spreadsheet cell is effectively empty."""
+    if value is None:
+        return True
+    if isinstance(value, str):
+        return not value.strip()
+    try:
+        return pd.isna(value)
+    except Exception:
+        return False
+
+
+def _coerce_excel_date(value):
+    """Convert diverse excel date inputs to a python date."""
+    if value is None or _is_cell_empty(value):
+        return None
+    if isinstance(value, date):
+        return value
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, pd.Timestamp):
+        return value.to_pydatetime().date()
+    if isinstance(value, (int, float)):
+        try:
+            ts = pd.to_datetime(value, errors="coerce")
+            if pd.isna(ts):
+                return None
+            return ts.to_pydatetime().date()
+        except Exception:
+            return None
+    if isinstance(value, str):
+        value = value.strip()
+        if not value:
+            return None
+        # Try common formats first
+        for fmt in ("%Y-%m-%d", "%d-%m-%Y", "%d/%m/%Y", "%m/%d/%Y"):
+            try:
+                return datetime.strptime(value, fmt).date()
+            except Exception:
+                continue
+        try:
+            parsed = pd.to_datetime(value, errors="coerce")
+            if pd.isna(parsed):
+                return None
+            return parsed.to_pydatetime().date()
+        except Exception:
+            return None
+    return None
+
+
+def _coerce_decimal(value):
+    """Return Decimal instance for numeric spreadsheet cell."""
+    if value is None or _is_cell_empty(value):
+        return None
+    if isinstance(value, Decimal):
+        return value
+    if isinstance(value, (int, float)):
+        return Decimal(str(value))
+    try:
+        value_str = str(value).replace(",", "").strip()
+        if not value_str:
+            return None
+        return Decimal(value_str)
+    except (InvalidOperation, AttributeError, TypeError):
+        return None
+
+
+def _resolve_employee_identifier(identifier: str):
+    """Resolve an employee using a provided identifier (badge ID, primary key, or formatted string)."""
+    if not identifier:
+        return None
+    normalized = identifier.strip()
+    if not normalized:
+        return None
+
+    candidates = [normalized]
+    if "(" in normalized and ")" in normalized:
+        inside = normalized.split("(", 1)[-1].split(")", 1)[0].strip()
+        if inside and inside not in candidates:
+            candidates.append(inside)
+
+    for candidate in candidates:
+        match = Employee.objects.filter(badge_id__iexact=candidate).first()
+        if match:
+            return match
+
+    for candidate in candidates:
+        try:
+            pk = int(candidate)
+        except (TypeError, ValueError):
+            continue
+        match = Employee.objects.filter(id=pk).first()
+        if match:
+            return match
+
+    return None
 
 
 def get_medical_fiscal_period(reference=None):
@@ -1739,6 +1886,7 @@ def view_reimbursement(request):
             "filter_dict": data_dict,
             "view": view,
             "reimbursement_exists": reimbursement_exists,
+            "medical_bulk_allowed": user_can_bulk_upload_medical(request.user),
         },
     )
 
@@ -1880,9 +2028,397 @@ def search_reimbursement(request):
             "reimbursements_ids": reimbursements_ids,
             "leave_encashments_ids": leave_encashments_ids,
             "bonus_encashment_ids": bonus_encashment_ids,
-            'medical_encashments_ids': medical_encashments_ids
+            "medical_encashments_ids": medical_encashments_ids,
+            "medical_bulk_allowed": user_can_bulk_upload_medical(request.user),
         },
     )
+
+
+@login_required
+@permission_required("payroll.add_reimbursement")
+def medical_reimbursement_template(request):
+    """Provide an Excel template for medical reimbursement bulk upload."""
+    if not user_can_bulk_upload_medical(request.user):
+        return HttpResponse(status=403)
+    try:
+        sample_row = {column: "" for column in MEDICAL_BULK_TEMPLATE_COLUMNS}
+        sample_row.update(
+            {
+                "Employee ID": "EMP-001",
+                "Claim Title": "Medical Claim - Consultation",
+                "Description": "General consultation and lab tests",
+                "Claim Date": date.today().isoformat(),
+                "Claim For": "Self",
+                "Expense 1 Type": "Consultation",
+                "Expense 1 Provider": "City Hospital",
+                "Expense 1 Date": date.today().isoformat(),
+                "Expense 1 Amount": "5000",
+                "Expense 1 Receipt": "123456",
+            }
+        )
+        dataframe = pd.DataFrame([sample_row], columns=MEDICAL_BULK_TEMPLATE_COLUMNS)
+        response = HttpResponse(
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+        response[
+            "Content-Disposition"
+        ] = 'attachment; filename="medical_reimbursements_template.xlsx"'
+        dataframe.to_excel(response, index=False)
+        return response
+    except Exception as exc:
+        messages.error(
+            request, _("Unable to generate template: %(reason)s") % {"reason": exc}
+        )
+        return redirect(reverse("view-reimbursement"))
+
+
+@login_required
+@hx_request_required
+@permission_required("payroll.add_reimbursement")
+def medical_reimbursement_bulk_upload(request):
+    """Handle Excel uploads for creating multiple medical reimbursement requests."""
+    if not user_can_bulk_upload_medical(request.user):
+        return HttpResponse(status=403)
+    context = {
+        "columns": MEDICAL_BULK_TEMPLATE_COLUMNS,
+    }
+
+    if request.method != "POST":
+        return render(
+            request, "payroll/reimbursement/medical_bulk_upload.html", context
+        )
+
+    upload = request.FILES.get("file")
+    if not upload:
+        messages.error(request, _("Please choose an Excel file to upload."))
+        return render(
+            request, "payroll/reimbursement/medical_bulk_upload.html", context
+        )
+
+    if not upload.name.lower().endswith((".xlsx", ".xls")):
+        messages.error(request, _("Only Excel files (.xlsx or .xls) are supported."))
+        return render(
+            request, "payroll/reimbursement/medical_bulk_upload.html", context
+        )
+
+    try:
+        dataframe = pd.read_excel(upload)
+    except Exception:
+        messages.error(
+            request,
+            _(
+                "We could not read the uploaded file. Please ensure it matches the provided template."
+            ),
+        )
+        return render(
+            request, "payroll/reimbursement/medical_bulk_upload.html", context
+        )
+
+    if dataframe.empty:
+        messages.warning(
+            request,
+            _(
+                "The uploaded file does not contain any data. Please review the template and try again."
+            ),
+        )
+        return render(
+            request, "payroll/reimbursement/medical_bulk_upload.html", context
+        )
+
+    for column in MEDICAL_BULK_TEMPLATE_COLUMNS:
+        if column not in dataframe.columns:
+            dataframe[column] = None
+
+    records = dataframe.to_dict("records")
+    errors = []
+    success_count = 0
+    skipped_blank = 0
+    employee_totals_cache = {}
+    pending_totals = defaultdict(Decimal)
+
+    for index, row in enumerate(records, start=2):
+        # Skip completely empty rows (including optional expense columns)
+        if all(_is_cell_empty(row.get(col)) for col in MEDICAL_BULK_TEMPLATE_COLUMNS):
+            skipped_blank += 1
+            continue
+
+        row_errors = []
+        identifier_raw = row.get("Employee ID")
+        identifier = (
+            str(identifier_raw).strip()
+            if identifier_raw is not None and not pd.isna(identifier_raw)
+            else ""
+        )
+        if not identifier:
+            row_errors.append(_("Employee ID is required."))
+            employee = None
+        else:
+            employee = _resolve_employee_identifier(identifier)
+            if not employee:
+                row_errors.append(
+                    _("Employee with ID '%(identifier)s' was not found.")
+                    % {"identifier": identifier}
+                )
+
+        title_raw = row.get("Claim Title")
+        title = (
+            str(title_raw).strip()
+            if title_raw is not None and not pd.isna(title_raw)
+            else ""
+        )
+        if not title:
+            row_errors.append(_("Claim Title is required."))
+        elif len(title) > 50:
+            row_errors.append(_("Claim Title cannot exceed 50 characters."))
+
+        description_raw = row.get("Description")
+        description = (
+            str(description_raw).strip()
+            if description_raw is not None and not pd.isna(description_raw)
+            else ""
+        )
+        if description and len(description) > 255:
+            row_errors.append(_("Description cannot exceed 255 characters."))
+
+        claim_date = _coerce_excel_date(row.get("Claim Date"))
+        if claim_date is None:
+            row_errors.append(_("Claim Date is required and must be a valid date."))
+
+        claim_for_raw = row.get("Claim For")
+        claim_for = (
+            str(claim_for_raw).strip().lower()
+            if claim_for_raw is not None and not pd.isna(claim_for_raw)
+            else ""
+        )
+        claim_for_code = MEDICAL_CLAIM_FOR_LOOKUP.get(claim_for)
+        if not claim_for_code:
+            row_errors.append(
+                _("Claim For must be one of: %(choices)s.")
+                % {
+                    "choices": ", ".join(MEDICAL_CLAIM_FOR_DISPLAY)
+                }
+            )
+
+        dependent_name_raw = row.get("Dependent Name")
+        dependent_name = (
+            str(dependent_name_raw).strip()
+            if dependent_name_raw is not None and not pd.isna(dependent_name_raw)
+            else ""
+        )
+        if claim_for_code and claim_for_code != "self" and not dependent_name:
+            row_errors.append(_("Dependent Name is required for this claim type."))
+        if dependent_name and len(dependent_name) > 100:
+            row_errors.append(_("Dependent Name cannot exceed 100 characters."))
+
+        expenses = []
+        expense_total = Decimal("0")
+        for idx in range(1, MEDICAL_BULK_MAX_EXPENSES + 1):
+            prefix = f"Expense {idx}"
+            exp_type = row.get(f"{prefix} Type")
+            exp_provider = row.get(f"{prefix} Provider")
+            exp_date = row.get(f"{prefix} Date")
+            exp_amount = row.get(f"{prefix} Amount")
+            exp_receipt = row.get(f"{prefix} Receipt")
+
+            if all(
+                _is_cell_empty(value)
+                for value in (exp_type, exp_provider, exp_date, exp_amount, exp_receipt)
+            ):
+                continue
+
+            exp_type = (
+                str(exp_type).strip()
+                if exp_type is not None and not pd.isna(exp_type)
+                else ""
+            )
+            exp_provider = (
+                str(exp_provider).strip()
+                if exp_provider is not None and not pd.isna(exp_provider)
+                else ""
+            )
+            exp_date = _coerce_excel_date(exp_date)
+            amount_decimal = _coerce_decimal(exp_amount)
+            exp_receipt = (
+                str(exp_receipt).strip()
+                if exp_receipt is not None and not pd.isna(exp_receipt)
+                else ""
+            )
+
+            expense_messages = []
+            if not exp_type:
+                expense_messages.append(
+                    _("Expense %(index)d: Type is required.") % {"index": idx}
+                )
+            if not exp_provider:
+                expense_messages.append(
+                    _("Expense %(index)d: Provider is required.") % {"index": idx}
+                )
+            if exp_date is None:
+                expense_messages.append(
+                    _("Expense %(index)d: Date is required.") % {"index": idx}
+                )
+            elif exp_date > date.today():
+                expense_messages.append(
+                    _("Expense %(index)d: Date cannot be in the future.")
+                    % {"index": idx}
+                )
+            if amount_decimal is None or amount_decimal <= 0:
+                expense_messages.append(
+                    _("Expense %(index)d: Amount must be greater than 0.")
+                    % {"index": idx}
+                )
+            if not exp_receipt:
+                expense_messages.append(
+                    _("Expense %(index)d: Receipt number is required.")
+                    % {"index": idx}
+                )
+            elif not exp_receipt.isdigit():
+                expense_messages.append(
+                    _("Expense %(index)d: Receipt number must be numeric.")
+                    % {"index": idx}
+                )
+
+            if expense_messages:
+                row_errors.extend(expense_messages)
+                continue
+
+            expense_total += amount_decimal
+            expenses.append(
+                {
+                    "expense_type": exp_type,
+                    "provider": exp_provider,
+                    "expense_date": exp_date.isoformat() if exp_date else "",
+                    "expense_amount": format(amount_decimal, ".2f"),
+                    "receipt_no_date": exp_receipt,
+                }
+            )
+
+        if not expenses:
+            row_errors.append(_("At least one expense must be provided."))
+        if len(expenses) > MEDICAL_BULK_MAX_EXPENSES:
+            row_errors.append(
+                _("A maximum of %(limit)d expenses can be provided per claim.")
+                % {"limit": MEDICAL_BULK_MAX_EXPENSES}
+            )
+
+        if expense_total > MEDICAL_ANNUAL_ALLOWANCE:
+            row_errors.append(
+                _("Total claim amount cannot exceed PKR %(limit)s.")
+                % {"limit": MEDICAL_ANNUAL_ALLOWANCE}
+            )
+        if expense_total <= 0:
+            row_errors.append(_("Claim amount must be greater than 0."))
+
+        if employee:
+            if employee.id not in employee_totals_cache:
+                approved_total = (
+                    Reimbursement.objects.filter(
+                        employee_id=employee,
+                        type="medical_encashment",
+                        status="approved",
+                    )
+                    .aggregate(total=Sum("amount"))
+                    .get("total")
+                    or 0
+                )
+                employee_totals_cache[employee.id] = Decimal(str(approved_total))
+
+            running_total = (
+                employee_totals_cache[employee.id] + pending_totals[employee.id]
+            )
+            if running_total + expense_total > MEDICAL_ANNUAL_ALLOWANCE:
+                row_errors.append(
+                    _(
+                        "This claim exceeds the annual medical allowance. Approved plus imported total would become PKR %(total)s."
+                    )
+                    % {"total": running_total + expense_total}
+                )
+
+        if row_errors:
+            errors.append({"row": index, "messages": row_errors})
+            continue
+
+        reimbursement = Reimbursement(
+            title=title,
+            description=description or None,
+            type="medical_encashment",
+            employee_id=employee,
+            allowance_on=claim_date,
+            claim_for=claim_for_code,
+            dependent_name=dependent_name or None,
+            medical_expenses=expenses,
+            total_claimed_amount=float(expense_total),
+            amount=float(expense_total),
+            status="requested",
+        )
+        reimbursement._skip_attachment_validation = True
+        reimbursement._force_employee_id = employee
+
+        try:
+            reimbursement.save()
+            success_count += 1
+            pending_totals[employee.id] += expense_total
+        except ValidationError as exc:
+            errors.append(
+                {
+                    "row": index,
+                    "messages": [
+                        _("Server validation failed: %(details)s")
+                        % {"details": "; ".join(exc.messages)}
+                    ],
+                }
+            )
+        except Exception as exc:
+            errors.append(
+                {
+                    "row": index,
+                    "messages": [
+                        _("Unexpected error while saving: %(details)s")
+                        % {"details": exc}
+                    ],
+                }
+            )
+
+    if success_count and not errors:
+        messages.success(
+            request,
+            _("Successfully created %(count)d medical claims.")
+            % {"count": success_count},
+        )
+        return HttpResponse(status=204, headers={"HX-Refresh": "true"})
+
+    if success_count:
+        messages.success(
+            request,
+            _(
+                "Created %(count)d medical claims. %(failed)d row(s) could not be imported."
+            )
+            % {"count": success_count, "failed": len(errors)},
+        )
+    elif not success_count and not errors:
+        messages.info(
+            request,
+            _("No rows could be imported. Please verify the file contains data."),
+        )
+
+    if errors:
+        messages.warning(
+            request,
+            _(
+                "Some rows were skipped. Please review the errors listed below and fix them in the template."
+            ),
+        )
+
+    context.update(
+        {
+            "errors": errors,
+            "success_count": success_count,
+            "failure_count": len(errors),
+            "skipped_blank": skipped_blank,
+        }
+    )
+    return render(request, "payroll/reimbursement/medical_bulk_upload.html", context)
+
 
 @login_required
 @hx_request_required

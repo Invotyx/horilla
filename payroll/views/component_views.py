@@ -158,36 +158,63 @@ def _is_cell_empty(value):
         return False
 
 
+def _excel_serial_to_date(value):
+    """Convert Excel serial date numbers (days since 1899-12-30) to a date."""
+    try:
+        numeric = Decimal(str(value))
+    except (InvalidOperation, TypeError):
+        return None
+    if numeric.is_nan():
+        return None
+    # Restrict range to plausible Excel serial date numbers.
+    if numeric < 10000 or numeric > 600000:
+        return None
+    try:
+        timestamp = pd.to_datetime(
+            float(numeric),
+            unit="D",
+            origin="1899-12-30",
+            errors="coerce",
+        )
+    except Exception:
+        return None
+    if pd.isna(timestamp):
+        return None
+    return timestamp.to_pydatetime().date()
+
+
 def _coerce_excel_date(value):
     """Convert diverse excel date inputs to a python date."""
     if value is None or _is_cell_empty(value):
         return None
-    if isinstance(value, date):
+    if isinstance(value, date) and not isinstance(value, datetime):
         return value
     if isinstance(value, datetime):
         return value.date()
     if isinstance(value, pd.Timestamp):
         return value.to_pydatetime().date()
     if isinstance(value, (int, float)):
-        try:
-            ts = pd.to_datetime(value, errors="coerce")
-            if pd.isna(ts):
-                return None
-            return ts.to_pydatetime().date()
-        except Exception:
-            return None
+        serial_date = _excel_serial_to_date(value)
+        if serial_date:
+            return serial_date
+        return None
     if isinstance(value, str):
         value = value.strip()
         if not value:
             return None
-        # Try common formats first
-        for fmt in ("%Y-%m-%d", "%d-%m-%Y", "%d/%m/%Y", "%m/%d/%Y"):
+        serial_date = _excel_serial_to_date(value)
+        if serial_date:
+            return serial_date
+        # Try configured formats first
+        for fmt in HORILLA_DATE_FORMATS.values():
             try:
                 return datetime.strptime(value, fmt).date()
             except Exception:
                 continue
         try:
-            parsed = pd.to_datetime(value, errors="coerce")
+            parsed = pd.to_datetime(value, errors="coerce", dayfirst=True)
+            if pd.isna(parsed):
+                parsed = pd.to_datetime(value, errors="coerce", dayfirst=False)
             if pd.isna(parsed):
                 return None
             return parsed.to_pydatetime().date()
@@ -2315,7 +2342,7 @@ def medical_reimbursement_bulk_upload(request):
                     Reimbursement.objects.filter(
                         employee_id=employee,
                         type="medical_encashment",
-                        status="approved",
+                        status__in=["approved", "closed"],
                     )
                     .aggregate(total=Sum("amount"))
                     .get("total")
@@ -2338,6 +2365,11 @@ def medical_reimbursement_bulk_upload(request):
             errors.append({"row": index, "messages": row_errors})
             continue
 
+        approver = None
+        try:
+            approver = getattr(request.user, "employee_get", None)
+        except Exception:
+            approver = None
         reimbursement = Reimbursement(
             title=title,
             description=description or None,
@@ -2349,10 +2381,12 @@ def medical_reimbursement_bulk_upload(request):
             medical_expenses=expenses,
             total_claimed_amount=float(expense_total),
             amount=float(expense_total),
-            status="requested",
+            status="closed",
         )
         reimbursement._skip_attachment_validation = True
         reimbursement._force_employee_id = employee
+        if approver:
+            reimbursement.approved_by = approver
 
         try:
             reimbursement.save()

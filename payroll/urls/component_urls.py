@@ -145,6 +145,11 @@ urlpatterns = [
         name="medical-reimbursement-template",
     ),
     path(
+        "medical-allowance-export/",
+        component_views.medical_allowance_export,
+        name="medical-allowance-export",
+    ),
+    path(
         "medical-reimbursement-bulk-upload/",
         component_views.medical_reimbursement_bulk_upload,
         name="medical-reimbursement-bulk-upload",

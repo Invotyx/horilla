@@ -5,6 +5,7 @@ This module is used to write methods to the component_urls patterns respectively
 """
 
 import json
+import logging
 import operator
 from decimal import Decimal, InvalidOperation
 from collections import defaultdict
@@ -91,6 +92,9 @@ from payroll.models.models import (
 from payroll.threadings.mail import MailSendThread
 
 
+logger = logging.getLogger(__name__)
+
+
 MEDICAL_ANNUAL_ALLOWANCE = Decimal("100000")
 MEDICAL_MONTHLY_ALLOWANCE = Decimal("8333")
 FISCAL_YEAR_MONTHS = 12
@@ -144,6 +148,13 @@ def user_can_bulk_upload_medical(user):
         return False
     department_name = department.strip().lower()
     return department_name in {"hr", "human resource", "human resources"}
+
+
+def user_is_super_admin(user):
+    """Return True when the current user is a super administrator."""
+    if not getattr(user, "is_authenticated", False):
+        return False
+    return getattr(user, "is_superuser", False)
 
 
 def _is_cell_empty(value):
@@ -318,12 +329,100 @@ def calculate_prorated_medical_allowance(employee, fiscal_start, fiscal_end):
         prorated = Decimal("0")
     return prorated
 
+from datetime import date
+from decimal import Decimal
+
+def calculate_prorated_medical_allowance_upto_current_month(employee, fiscal_start, fiscal_end):
+    """Compute the prorated medical allowance from joining month up to the current month."""
+    join_date = get_employee_join_date(employee)
+    if not join_date:
+        return MEDICAL_ANNUAL_ALLOWANCE  # default full allowance if join date missing
+
+    today = date.today()
+
+    # If joined after fiscal end or after current month, no allowance
+    if join_date > today or join_date >= fiscal_end:
+        return Decimal("0")
+
+    # Determine range for calculation
+    join_month_start = join_date.replace(day=1)
+    current_month_start = today.replace(day=1)
+
+    # Ensure the range is within the fiscal year
+    start = max(join_month_start, fiscal_start)
+    end = min(current_month_start, fiscal_end)
+
+    months_eligible = _months_between(start, end) + 1  # include the current month
+
+    # Keep it within valid range
+    if months_eligible < 0:
+        months_eligible = 0
+    elif months_eligible > FISCAL_YEAR_MONTHS:
+        months_eligible = FISCAL_YEAR_MONTHS
+
+    prorated = MEDICAL_MONTHLY_ALLOWANCE * months_eligible
+    return prorated
+
 
 def decimal_or_zero(value):
     """Safely convert a numeric value to Decimal."""
     if value is None:
         return Decimal("0")
     return Decimal(value)
+
+
+def build_medical_groups(request, medical_encashments):
+    """Return structured medical allowance data for the given request."""
+    employees = Employee.objects.all()
+    if not request.user.has_perm("payroll.view_reimbursement"):
+        employee = getattr(request.user, "employee_get", None)
+        if employee:
+            employees = employees.filter(id=employee.id)
+        else:
+            employees = employees.none()
+
+    fiscal_start, fiscal_end = get_medical_fiscal_period()
+    medical_groups = []
+
+    for emp in employees:
+        emp_claims = medical_encashments.filter(employee_id=emp).prefetch_related(
+            "other_attachments"
+        )
+        approved_total = decimal_or_zero(
+            emp_claims.filter(
+                status__in=["closed"],
+                allowance_on__gte=fiscal_start,
+                allowance_on__lt=fiscal_end,
+            )
+            .aggregate(total=Sum("amount"))
+            .get("total")
+        )
+        prorated_allowance = calculate_prorated_medical_allowance(
+            emp, fiscal_start, fiscal_end
+        )
+        available_allowance = (
+            calculate_prorated_medical_allowance_upto_current_month(
+                emp, fiscal_start, fiscal_end
+            )
+            - approved_total
+        )
+
+        if available_allowance < 0:
+            available_allowance = Decimal("0")
+
+        medical_groups.append(
+            {
+                "employee": emp,
+                "claims": list(emp_claims),
+                "total": approved_total,
+                "prorated_allowance": prorated_allowance,
+                "available_allowance": available_allowance,
+                "remaining": available_allowance,
+                "count": emp_claims.count(),
+            }
+        )
+
+    return medical_groups
 
 
 def return_none(a, b):
@@ -1798,7 +1897,7 @@ def view_reimbursement(request):
     if Reimbursement.objects.exists():
         reimbursement_exists = True
     if request.GET:
-        filter_object = ReimbursementFilter(request.GET)
+        filter_object = ReimbursementFilter(request.GET or None)
     else:
         filter_object = ReimbursementFilter() #   {"status": "requested"}  for now show all will change later according to req
     requests = filter_own_records(
@@ -1813,43 +1912,7 @@ def view_reimbursement(request):
     leave_encashments = requests.filter(type="leave_encashment")
     bonus_encashment = requests.filter(type="bonus_encashment")
     medical_encashments = requests.filter(type="medical_encashment")
-    employees = Employee.objects.all()
-    if not request.user.has_perm("payroll.view_reimbursement"):
-        employees = employees.filter(id=request.user.employee_get.id)
-
-    fiscal_start, fiscal_end = get_medical_fiscal_period()
-    medical_groups = []
-    for emp in employees:
-        emp_claims = medical_encashments.filter(employee_id=emp).prefetch_related(
-            "other_attachments"
-        )
-        approved_total = decimal_or_zero(
-            emp_claims.filter(
-                status__in=["closed"],
-                allowance_on__gte=fiscal_start,
-                allowance_on__lt=fiscal_end,
-            )
-            .aggregate(total=Sum("amount"))
-            .get("total")
-        )
-        prorated_allowance = calculate_prorated_medical_allowance(
-            emp, fiscal_start, fiscal_end
-        )
-        available_allowance = prorated_allowance - approved_total
-        if available_allowance < 0:
-            available_allowance = Decimal("0")
-
-        medical_groups.append(
-            {
-                "employee": emp,
-                "claims": list(emp_claims),
-                "total": approved_total,
-                "prorated_allowance": prorated_allowance,
-                "available_allowance": available_allowance,
-                "remaining": available_allowance,
-                "count": emp_claims.count(),
-            }
-        )
+    medical_groups = build_medical_groups(request, medical_encashments)
 
     data_dict = {"status": ["requested"]}
     view = request.GET.get("view")
@@ -1877,6 +1940,7 @@ def view_reimbursement(request):
             "view": view,
             "reimbursement_exists": reimbursement_exists,
             "medical_bulk_allowed": user_can_bulk_upload_medical(request.user),
+            "medical_export_allowed": user_is_super_admin(request.user),
         },
     )
 
@@ -1935,43 +1999,7 @@ def search_reimbursement(request):
     leave_encashments = requests.filter(type="leave_encashment")
     bonus_encashment = requests.filter(type="bonus_encashment")
     medical_encashments = requests.filter(type="medical_encashment")
-    employees = Employee.objects.all()
-    if not request.user.has_perm("payroll.view_reimbursement"):
-        employees = employees.filter(id=request.user.employee_get.id)
-
-    fiscal_start, fiscal_end = get_medical_fiscal_period()
-    medical_groups = []
-    for emp in employees:
-        emp_claims = medical_encashments.filter(employee_id=emp).prefetch_related(
-            "other_attachments"
-        )
-        approved_total = decimal_or_zero(
-            emp_claims.filter(
-                status__in=["closed"],
-                allowance_on__gte=fiscal_start,
-                allowance_on__lt=fiscal_end,
-            )
-            .aggregate(total=Sum("amount"))
-            .get("total")
-        )
-        prorated_allowance = calculate_prorated_medical_allowance(
-            emp, fiscal_start, fiscal_end
-        )
-        available_allowance = prorated_allowance - approved_total
-        if available_allowance < 0:
-            available_allowance = Decimal("0")
-
-        medical_groups.append(
-            {
-                "employee": emp,
-                "claims": list(emp_claims),
-                "total": approved_total,
-                "prorated_allowance": prorated_allowance,
-                "available_allowance": available_allowance,
-                "remaining": available_allowance,
-                "count": emp_claims.count(),
-            }
-        )
+    medical_groups = build_medical_groups(request, medical_encashments)
 
     reimbursements_ids = json.dumps(list(reimbursements.values_list("id", flat=True)))
     leave_encashments_ids = json.dumps(
@@ -2016,6 +2044,7 @@ def search_reimbursement(request):
             "bonus_encashment_ids": bonus_encashment_ids,
             "medical_encashments_ids": medical_encashments_ids,
             "medical_bulk_allowed": user_can_bulk_upload_medical(request.user),
+            "medical_export_allowed": user_is_super_admin(request.user),
         },
     )
 
@@ -2056,6 +2085,90 @@ def medical_reimbursement_template(request):
             request, _("Unable to generate template: %(reason)s") % {"reason": exc}
         )
         return redirect(reverse("view-reimbursement"))
+
+
+@login_required
+def medical_allowance_export(request):
+    """Generate an Excel export for the medical allowance overview."""
+    if not user_is_super_admin(request.user):
+        return HttpResponse(status=403)
+
+    query_string = request.GET.urlencode()
+    redirect_url = reverse("view-reimbursement")
+    if query_string:
+        redirect_url = f"{redirect_url}?{query_string}"
+
+    try:
+        filter_object = ReimbursementFilter(request.GET or None)
+        requests = filter_own_records(
+            request, filter_object.qs, "payroll.view_reimbursement"
+        )
+        employee = getattr(request.user, "employee_get", None)
+        if employee:
+            pending_ids = ReimbursementConditionApproval.objects.filter(
+                manager_id=employee
+            ).values_list("reimbursement_id", flat=True)
+            requests = (
+                requests | Reimbursement.objects.filter(id__in=pending_ids)
+            ).distinct()
+        medical_encashments = requests.filter(type="medical_encashment")
+        medical_groups = build_medical_groups(request, medical_encashments)
+
+        if not medical_groups:
+            messages.info(request, _("No data available to export."))
+            return HttpResponseRedirect(redirect_url)
+
+        workbook = Workbook()
+        worksheet = workbook.active
+        worksheet.title = str(_("Medical Allowance"))
+
+        headers = [
+            str(_("Employee ID")),
+            str(_("Employee Name")),
+            str(_("Total Claimed")),
+            str(_("Prorated Allowance")),
+            str(_("Available Allowance")),
+        ]
+        worksheet.append(headers)
+
+        for column_index, _header in enumerate(headers, start=1):
+            cell = worksheet.cell(row=1, column=column_index)
+            cell.font = Font(bold=True)
+            cell.alignment = Alignment(horizontal="center")
+
+        for group in medical_groups:
+            employee = group["employee"]
+            worksheet.append(
+                [
+                    getattr(employee, "badge_id", "") or "",
+                    employee.get_full_name(),
+                    float(group["total"]),
+                    float(group["prorated_allowance"]),
+                    float(group["available_allowance"]),
+                ]
+            )
+
+        for column_cells in worksheet.columns:
+            column_letter = get_column_letter(column_cells[0].column)
+            max_length = max(
+                len(str(cell.value)) if cell.value is not None else 0
+                for cell in column_cells
+            )
+            worksheet.column_dimensions[column_letter].width = min(max_length + 2, 40)
+
+        filename = f"Medical_Allowance_Report_{date.today().isoformat()}.xlsx"
+        response = HttpResponse(
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+        response["Content-Disposition"] = f'attachment; filename="{filename}"'
+        workbook.save(response)
+        return response
+    except Exception:
+        logger.exception("Unable to export medical allowance report.")
+        messages.error(
+            request, _("Unable to export data. Please try again later.")
+        )
+        return HttpResponseRedirect(redirect_url)
 
 
 @login_required
@@ -2444,7 +2557,8 @@ def medical_tab(request, emp_id):
         .aggregate(total=Sum("amount"))
         .get("total")
     )
-    available_allowance = prorated_allowance - availed
+    available_allowance = calculate_prorated_medical_allowance_upto_current_month(employee, fiscal_start, fiscal_end) - availed
+    
     if available_allowance < 0:
         available_allowance = Decimal("0")
 

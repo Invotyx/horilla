@@ -483,7 +483,28 @@
                                 <ion-icon name="cloud-upload-outline" class="me-1"></ion-icon>
                                 {% trans "Bulk Upload" %}
                             </button>
+                            {% if medical_export_allowed %}
+                                {% url 'medical-allowance-export' as medical_export_link %}
+                                <a
+                                    class="oh-btn oh-btn--light-bkg"
+                                    href="{{ medical_export_link }}{% if pd %}?{{ pd }}{% endif %}"
+                                >
+                                    <ion-icon name="download-outline" class="me-1"></ion-icon>
+                                    {% trans "Export to Excel" %}
+                                </a>
+                            {% endif %}
                         </div>
+                    </div>
+                {% elif medical_export_allowed %}
+                    <div class="d-flex flex-wrap justify-content-end align-items-center mb-3 gap-2">
+                        {% url 'medical-allowance-export' as medical_export_link %}
+                        <a
+                            class="oh-btn oh-btn--light-bkg"
+                            href="{{ medical_export_link }}{% if pd %}?{{ pd }}{% endif %}"
+                        >
+                            <ion-icon name="download-outline" class="me-1"></ion-icon>
+                            {% trans "Export to Excel" %}
+                        </a>
                     </div>
                 {% endif %}
                 {% if medical_encashments %}
